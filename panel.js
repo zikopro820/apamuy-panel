@@ -5,7 +5,8 @@
    ========================================================= */
 const VIEWS = {}; let VISTA = "", YO = null, NEG = null, ADMIN = false;
 const NAV_NEG = [["inicio", "home", "Inicio"], ["pedidos", "bell", "Pedidos"], ["carta", "fire", "Carta y precios"], ["caja", "cash", "Caja"], ["comision", "percent", "Comisión Apamuy"], ["negocio", "store", "Mi negocio"]];
-const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["comisiones", "percent", "Comisiones"], ["clientes", "users", "Clientes"], ["config", "gear", "Configuración"]];
+const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["comisiones", "percent", "Comisiones"], ["clientes", "users", "Clientes"],
+  ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["config", "gear", "Comisión y delivery"]];
 const ESTADOS_N = { pendiente: ["En revisión", "warn"], activo: ["Activo", "ok"], suspendido: ["Suspendido", "bad"], rechazado: ["Rechazado", "bad"] };
 const estN = e => { const [t, c] = ESTADOS_N[e] || [e, "mute"]; return `<span class="st ${c}">${t}</span>`; };
 const estP = (e, p) => { const [t, c] = EST_P[e] || [e, "mute"]; return `<span class="st ${c}">${p && p.entrega === "recojo" && e === "listo" ? "Listo para recoger" : t}</span>`; };
@@ -17,7 +18,7 @@ const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 function pantallaLogin(modo = "entrar") {
   document.body.innerHTML = `<main class="login"><div class="l-box"><img class="l-img" src="favicon.svg" alt="" width="64" height="64"><h1>Apamuy para negocios</h1>
     <p>${modo === "crear" ? "Crea tu cuenta y registra tu negocio. Lo revisamos y lo publicamos en la app." : "Entra para ver tus pedidos y tu carta."}</p>
-    ${DEMO ? `<div class="demo-n"><b>MODO DEMO</b> · elige con qué cuenta probar:</div><div class="demo-l">${[["neg-pollon", "pollon@demo.pe", "Pollería El Pollón (activo)"], ["neg-jugos", "jugos@demo.pe", "Juguería La Fresca (en revisión)"], ["neg-nuevo", "nuevo@demo.pe", "Negocio nuevo (registrarse)"], ["adm", (AP.admins || [])[0], "Administrador Apamuy"]].map(([u, e, t]) => `<button class="btn btn-light" data-demo="${u}|${e}">${t}</button>`).join("")}</div>`
+    ${DEMO ? `<div class="demo-n"><b>MODO DEMO</b> · elige con qué cuenta probar:</div><div class="demo-l">${[["demo-pollon", "pollon@demo.pe", "Pollería El Pollón (activo)"], ["neg-jugos", "jugos@demo.pe", "Juguería La Fresca (en revisión)"], ["neg-nuevo", "nuevo@demo.pe", "Negocio nuevo (registrarse)"], ["adm", (AP.admins || [])[0], "Administrador Apamuy"]].map(([u, e, t]) => `<button class="btn btn-light" data-demo="${u}|${e}">${t}</button>`).join("")}</div>`
     : `<button class="btn btn-google btn-lg" id="lG"><svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Continuar con Google</button>
       <div class="o-sep"><span>o con tu correo</span></div>
       <form id="lf" class="l-f">${fld("email", "Correo", "", { type: "email", req: true, extra: 'autocomplete="username"' })}${fld("pass", modo === "crear" ? "Crea una contraseña (mín. 6)" : "Contraseña", "", { type: "password", req: true, extra: `autocomplete="${modo === "crear" ? "new-password" : "current-password"}" minlength="6"` })}
@@ -35,7 +36,7 @@ function pantallaLogin(modo = "entrar") {
 
 /* ================= ARRANQUE ================= */
 (async () => {
-  await cargarConfig().catch(() => {});
+  await cargarConfig().catch(() => {}); await cargarRubros(true).catch(() => {});
   let iniciado = false;
   Sesion.alCambiar(async u => {
     if (iniciado) return location.reload(); iniciado = true; YO = u;
@@ -61,11 +62,14 @@ function formNegocio(box, n) {
   let pos = a.ubic || null, IMG = { logo: a.logo || "", portada: a.portada || "", yapeQR: a.yapeQR || "", plinQR: a.plinQR || "" };
   const foto = (k, txt, w) => `<div class="foto-up"><span class="fp-${k}" id="pv_${k}" style="background-image:url('${esc(IMG[k])}')"></span><label class="btn btn-light btn-sm">${ico("camera")} ${txt}<input type="file" accept="image/*" data-img="${k}" data-w="${w}" hidden></label></div>`;
   box.innerHTML = `<form class="card" id="nF" novalidate>
-    <h2>${ico("store")} Tu negocio</h2><div class="g2">${fld("nombre", "Nombre del negocio", a.nombre || "", { req: true })}${fld("tipo", "Tipo", a.tipo || CONF.tipos[0], { opts: CONF.tipos })}
+    <h2>${ico("store")} Tu negocio</h2><div class="g2">${fld("nombre", "Nombre del negocio", a.nombre || "", { req: true, full: true })}
+      ${fld("rubro", "¿Qué vendes?", a.rubro || (RUBROS[0] || {}).id || "comida", { opts: RUBROS.filter(r => r.activo !== false || r.id === a.rubro).map(r => [r.id, r.nombre]) })}<label class="fld"><span>Tipo</span><select name="tipo" id="nTipo"></select></label>
+      <label class="fld full" id="nRegL" hidden><span id="nRegT">Registro</span><input name="registro" id="nReg" value="${esc(a.registro || "")}"></label>
       ${fld("descripcion", "Descripción corta", a.descripcion || "", { full: true, ph: "Ej. Pollo a la brasa al carbón y parrillas" })}
       <div class="fld"><span>Logo (cuadrado)</span>${foto("logo", "Subir logo", 400)}</div><div class="fld"><span>Foto de portada (horizontal)</span>${foto("portada", "Subir portada", 1200)}</div></div>
     <h2>${ico("phone")} Contacto</h2><div class="g2">${fld("telefono", "Celular del negocio", a.telefono || "", { req: true, type: "tel" })}${fld("whatsapp", "WhatsApp (para los clientes)", a.whatsapp || "", { type: "tel", ph: "9 dígitos" })}</div>
-    <h2>${ico("pin")} Ubicación</h2><p class="muted sm">Mueve el pin hasta la puerta de tu local. Con esto calculamos la distancia y el costo del delivery.</p>
+    <h2>${ico("pin")} Ubicación</h2><div class="g3"><label class="fld"><span>Departamento</span><select name="departamento" id="nDep"></select></label><label class="fld"><span>Provincia (ciudad)</span><select name="provincia" id="nProv"></select></label><label class="fld"><span>Distrito</span><select name="distrito" id="nDis"></select></label></div>
+      <p class="muted sm">Tu negocio aparece a los clientes de toda tu provincia. Mueve el pin hasta la puerta de tu local: con esto calculamos la distancia y el costo del delivery.</p>
       <div class="mapa" id="nMapa"></div><div class="g2">${fld("direccion", "Dirección", a.direccion || "", { req: true })}${fld("referencia", "Referencia", a.referencia || "")}</div>
     <h2>${ico("clock")} Horario y entrega</h2><div class="g2">${fld("abre", "Abre", a.abre, { type: "time" })}${fld("cierra", "Cierra", a.cierra, { type: "time", help: "Si cierra pasada la medianoche también funciona." })}
       <div class="full"><span class="lbl">Días de atención</span><div class="dias-ck">${DIAS.map((t, i) => `<label class="chk"><input type="checkbox" name="dia${i}" ${(a.dias || []).includes(i) ? "checked" : ""}><span>${t}</span></label>`).join("")}</div></div>
@@ -82,12 +86,24 @@ function formNegocio(box, n) {
     ${n ? "" : `<label class="chk full terms"><input type="checkbox" name="acepto"><span>Acepto que Apamuy cobre una comisión del <b>${pctDe(null)}%</b> sobre la comida de cada pedido entregado por la app, que pagaré cada semana. Si no pago en el plazo, mi negocio se oculta de la app hasta ponerme al día.</span></label>`}
     <p class="l-err" id="nErr" role="alert"></p><div class="f-end"><button class="btn btn-pri btn-lg">${ico("check")} ${n ? "Guardar cambios" : "Enviar para revisión"}</button></div></form>`;
   const F = $("#nF", box), err = $("#nErr", box);
-  mapaPin($("#nMapa", box), pos, q => pos = q);
+  let MP = null; mapaPin($("#nMapa", box), pos || centroDe(a.departamento || CONF.ciudadInicial.dep, a.provincia || CONF.ciudadInicial.prov, a.distrito), q => pos = q).then(m => MP = m);
+  const U = window.UBIGEO || {}, ord = l => l.sort((x, y) => x.localeCompare(y)), opt = (l, v) => l.map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("");
+  const sDep = $("#nDep", F), sProv = $("#nProv", F), sDis = $("#nDis", F);
+  const llenar = (dep, prov, dis) => { sDep.innerHTML = opt(ord(Object.keys(U)), dep); const ps = ord(Object.keys(U[sDep.value] || {})); sProv.innerHTML = opt(ps, ps.includes(prov) ? prov : ps[0]);
+    const ds = (U[sDep.value][sProv.value] || []).map(x => x[0]); sDis.innerHTML = opt(ds, ds.includes(dis) ? dis : ds[0]); };
+  llenar(a.departamento || CONF.ciudadInicial.dep, a.provincia || CONF.ciudadInicial.prov, a.distrito);
+  const irDistrito = () => { if (pos && n) return; const c = centroDe(sDep.value, sProv.value, sDis.value); if (c && MP) { MP.mapa.setView([c.lat, c.lng], 15); MP.marcador.setLatLng([c.lat, c.lng]); pos = null; } };
+  sDep.onchange = () => { llenar(sDep.value); irDistrito(); }; sProv.onchange = () => { llenar(sDep.value, sProv.value); irDistrito(); }; sDis.onchange = irDistrito;
+  const sRub = $("[name=rubro]", F), sTipo = $("#nTipo", F);
+  const ponerRubro = () => { const r = rubroDe(sRub.value), ts = r.tipos && r.tipos.length ? r.tipos : ["General"]; sTipo.innerHTML = opt(ts, ts.includes(a.tipo) ? a.tipo : ts[0]);
+    $("#nRegL", F).hidden = !r.requiereRegistro; $("#nRegT", F).textContent = (r.requiereRegistro || "Registro") + " *"; };
+  sRub.onchange = ponerRubro; ponerRubro();
   $$("[data-img]", F).forEach(i => i.onchange = async e => { const f = e.target.files[0], k = e.target.dataset.img; if (!f) return; IMG[k] = await redimensionar(f, +e.target.dataset.w, .8, k.endsWith("QR") ? "image/png" : "image/jpeg"); $("#pv_" + k).style.backgroundImage = `url('${IMG[k]}')`; });
   F.onsubmit = async e => {
     e.preventDefault(); err.textContent = ""; const d = datosForm(F);
     const req = $$("[required]", F).find(x => !String(x.value).trim()); if (req) { req.focus(); return err.textContent = "Completa: " + req.closest("label").querySelector("span").textContent.replace(" *", ""); }
-    if (!pos) return err.textContent = "Marca la ubicación de tu local en el mapa.";
+    if (!pos) return err.textContent = "Mueve el pin (o toca el mapa) en la puerta de tu local.";
+    if (rubroDe(d.rubro).requiereRegistro && !d.registro) return err.textContent = "Escribe tu " + rubroDe(d.rubro).requiereRegistro + ".";
     if (d.telefono.replace(/\D/g, "").length < 9) return err.textContent = "El celular debe tener 9 dígitos.";
     if (d.docTipo === "RUC" ? d.docNum.length !== 11 : d.docNum.length !== 8) return err.textContent = d.docTipo === "RUC" ? "El RUC tiene 11 dígitos." : "El DNI tiene 8 dígitos.";
     const dias = [0, 1, 2, 3, 4, 5, 6].filter(i => d["dia" + i]); if (!dias.length) return err.textContent = "Marca al menos un día de atención.";
@@ -98,7 +114,7 @@ function formNegocio(box, n) {
     try {
       const up = {}; for (const k of Object.keys(IMG)) up[k] = await subirFoto(`negocios/${YO.uid}/${k}-${Date.now().toString(36)}.${k.endsWith("QR") ? "png" : "jpg"}`, IMG[k]);
       const wsp = d.whatsapp.replace(/\D/g, "") || d.telefono.replace(/\D/g, "");
-      const data = { nombre: d.nombre, tipo: d.tipo, descripcion: d.descripcion, telefono: d.telefono.replace(/\D/g, ""), whatsapp: wsp.length === 9 ? "51" + wsp : wsp, direccion: d.direccion, referencia: d.referencia, ubic: pos,
+      const data = { nombre: d.nombre, rubro: d.rubro, tipo: d.tipo, registro: rubroDe(d.rubro).requiereRegistro ? d.registro : "", departamento: d.departamento, provincia: d.provincia, distrito: d.distrito, prov: provKey(d.departamento, d.provincia), descripcion: d.descripcion, telefono: d.telefono.replace(/\D/g, ""), whatsapp: wsp.length === 9 ? "51" + wsp : wsp, direccion: d.direccion, referencia: d.referencia, ubic: pos,
         abre: d.abre, cierra: d.cierra, dias, delivery: d.delivery, recojo: d.recojo, tiempo: d.tiempo, pedidoMinimo: +d.pedidoMinimo || 0, extrasGratis: d.extras.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 20),
         pagoYape: d.pagoYape, pagoPlin: d.pagoPlin, contraEntrega: d.contraEntrega, yapeNum: d.yapeNum, yapeTitular: d.yapeTitular, plinNum: d.plinNum, plinTitular: d.plinTitular, pagoTransf: false,
         documento: { tipo: d.docTipo, numero: d.docNum, nombre: d.docNombre }, ...up, actualizado: new Date().toISOString() };
@@ -159,7 +175,7 @@ function vigilar() {
 /* ================= NEGOCIO · INICIO ================= */
 VIEWS.inicio = async () => {
   const hoy = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HOY()])).filter(p => !["anulado", "rechazado"].includes(p.estado));
-  const ent = hoy.filter(p => p.estado === "entregado"), ventas = ent.reduce((a, p) => a + (+p.subtotal || 0), 0);
+  const ent = hoy.filter(p => p.estado === "entregado"), ventas = ent.reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0);
   $("#view").innerHTML = topBar(`Hola, ${esc(NEG.nombre)}`, "Así va tu negocio hoy.", NEG.estado === "activo" ? `<a class="btn btn-light btn-sm" href="${esc(AP.web)}/negocio.html?n=${encodeURIComponent(NEG.id)}" target="_blank" rel="noopener">${ico("arrow")} Ver mi tienda en la app</a>` : "") + `
     <div class="kpis neon"><div class="kpi"><span>Ventas de hoy</span><b>${S(ventas)}</b><small>${ent.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Pedidos de hoy</span><b>${hoy.length}</b><small>sin contar anulados</small></div>
       <div class="kpi"><span>Por atender</span><b>${PEDS.filter(p => ["por-validar", "nuevo"].includes(p.estado)).length}</b><small>nuevos o por validar</small></div><div class="kpi"><span>En curso</span><b>${PEDS.length}</b><small>preparando, listos o en camino</small></div>
@@ -177,13 +193,14 @@ VIEWS.pedidos = async silencioso => {
   const tarjeta = p => { const al = [], m = minDesde(p.creado);
     if (p.estado === "por-validar") { if (p.montoLeido == null) al.push(["warn", "No se pudo leer el monto de la captura."]); else if (p.coincide === false) al.push(["bad", `La captura dice ${S(p.montoLeido)}.`]); if (p.fechaOk === false) al.push(["bad", "La fecha de la captura no es de hoy."]); if (p.operacion && ops[p.operacion] > 1) al.push(["bad", "N° de operación repetido."]); }
     const tarde = ACTIVOS.includes(p.estado) && m >= (p.tiempo ? +p.tiempo + 10 : 40);
-    return `<article class="card ped ${esc(p.estado)} ${tarde ? "tarde" : ""}"><div class="ped-b"><div class="ped-h"><span class="ent">${p.entrega === "delivery" ? "🛵 Delivery" : "🏪 Recojo"}</span><span class="mono">${esc(p.codigo)}</span>${PT === "activos" ? `<span class="reloj ${tarde ? "neg" : ""}">${ico("clock")} ${m} min</span>` : estP(p.estado, p)}</div>
-      <b class="ped-n">${esc(p.cliente.nombre)}</b><ul class="ped-it">${(p.items || []).map(i => `<li><b>${i.cant}×</b> ${esc(i.n)}${detItem(i).map(d => `<small>${esc(d)}</small>`).join("")}</li>`).join("")}</ul>
+    return `<article class="card ped ${esc(p.estado)} ${tarde ? "tarde" : ""}"><div class="ped-b"><div class="ped-h"><span class="ent">${p.entrega === "servicio" ? "🔧 Servicio" : p.entrega === "delivery" ? "🛵 Delivery" : "🏪 Recojo"}</span><span class="mono">${esc(p.codigo)}</span>${PT === "activos" ? `<span class="reloj ${tarde ? "neg" : ""}">${ico("clock")} ${m} min</span>` : estP(p.estado, p)}</div>
+      <b class="ped-n">${esc(p.cliente.nombre)} <a class="tel" href="tel:${esc(p.cliente.celular)}">📞 ${esc(p.cliente.celular)}</a></b>${p.mayorEdad ? `<span class="st warn">🔞 Pedir DNI al entregar</span>` : ""}
+      ${p.servicio ? `<p class="ped-nota">🔧 ${esc(p.servicio.detalle)}<br><small>${p.servicio.lugar === "domicilio" ? "🏠 A domicilio" : "En el taller"}${p.servicio.fecha ? " · " + fmtFH(p.servicio.fecha) : ""}</small></p>` : ""}<ul class="ped-it">${(p.items || []).map(i => `<li><b>${i.cant}×</b> ${esc(i.n)}${detItem(i).map(d => `<small>${esc(d)}</small>`).join("")}</li>`).join("")}</ul>
       ${p.nota ? `<p class="ped-nota">📝 ${esc(p.nota)}</p>` : ""}<p><b>Comida ${S(p.subtotal)}</b>${p.envio ? ` · delivery ${S(p.envio)}` : ""} · ${esc(p.pago)}${p.pagaCon ? ` · paga con ${S(p.pagaCon)} → vuelto ${S(p.pagaCon - p.total)}` : ""}${p.pagado ? ` <span class="st ok">Pagado</span>` : ""}</p>
       ${p.entrega === "delivery" && p.destino ? `<p class="muted">📍 ${esc(p.destino.texto)}${p.destino.referencia ? " · " + esc(p.destino.referencia) : ""} · ${p.km} km · <a href="https://maps.google.com/?q=${p.destino.lat},${p.destino.lng}" target="_blank" rel="noopener">Ver mapa</a></p>` : ""}
       ${al.map(([c, t]) => `<div class="alert ${c} sm">${ico("alert")} ${t}</div>`).join("")}
       <div class="acts-g">${PT === "activos" ? accionesPedido(p) : ""}<button class="btn btn-light btn-sm" data-pa="comanda|${esc(p.id)}" title="Comanda para cocina">${ico("chef")}</button><button class="btn btn-wa btn-sm" data-pa="wa|${esc(p.id)}" title="WhatsApp al cliente">${ico("wa")}</button></div></div></article>`; };
-  const COLS = [["Por atender", p => ["por-validar", "nuevo"].includes(p.estado)], ["Preparando", p => p.estado === "cocina"], ["Listos", p => p.estado === "listo"], ["En camino", p => p.estado === "camino"]];
+  const COLS = [["Por atender", p => ["por-validar", "nuevo"].includes(p.estado)], [rubroDe(NEG.rubro).modo === "servicios" ? "En proceso" : "Preparando", p => p.estado === "cocina"], ["Listos", p => p.estado === "listo"], ["En camino", p => p.estado === "camino"]];
   const html = topBar("Pedidos", "Llegan solos y suenan. Avísale al cliente en cada paso.", `<div class="seg"><button class="${PT === "activos" ? "on" : ""}" data-pt="activos">En curso (${PEDS.length})</button><button class="${PT === "hist" ? "on" : ""}" data-pt="hist">Historial</button></div>${PT === "hist" ? `<input type="date" class="q" id="hD" value="${HIST_D}">` : ""}`)
     + (PT === "activos" ? (PEDS.some(p => p.estado === "por-validar") ? `<div class="alert warn">${ico("alert")} <span>Antes de validar, <b>confirma en tu app de Yape/Plin que el dinero llegó</b>. Una captura se puede editar.</span></div>` : "")
       + `<div class="board">${COLS.map(([t, f]) => { const l = lista.filter(f).sort((a, b) => String(a.creado).localeCompare(b.creado)); return `<section class="col"><h3>${t} <b>${l.length}</b></h3>${l.map(tarjeta).join("") || `<p class="muted sm col-v">—</p>`}</section>`; }).join("")}</div>`
@@ -195,6 +212,7 @@ VIEWS.pedidos = async silencioso => {
 };
 function accionesPedido(p) {
   const B = (a, t, c = "btn-light") => `<button class="btn ${c} btn-sm" data-pa="${a}|${esc(p.id)}">${t}</button>`;
+  if (p.entrega === "servicio") return { nuevo: B("aceptarS", `${ico("check")} Aceptar`, "btn-pri") + B("anular", "No puedo"), cocina: B("terminar", `${ico("check")} Terminado y cobrado`, "btn-pri") + B("anular", "Anular") }[p.estado] || "";
   return { "por-validar": B("validar", `${ico("check")} Ver captura y validar`, "btn-pri") + B("rechazar", "Rechazar"), nuevo: B("aceptar", `${ico("fire")} Aceptar`, "btn-pri") + B("anular", "Rechazar"),
     cocina: B("listo", `${ico("check")} Listo`, "btn-pri") + B("anular", "Anular"),
     listo: (p.entrega === "delivery" ? B("salio", `${ico("bike")} Salió a entregar`, "btn-pri") : B("entregar", `${ico("check")} Recogido${p.pagado ? "" : " y cobrado"}`, "btn-pri")) + B("anular", "Anular"),
@@ -213,6 +231,9 @@ async function accionPedido(a, p) {
   if (a === "rechazar") return modal("Rechazar pago", fld("motivo", "Motivo", "No llegó el pago", { full: true, opts: ["No llegó el pago", "El monto no coincide", "La captura no se lee", "La captura es de otro pago"] }), async d => fin([upd({ estado: "rechazado", motivo: d.motivo })], "Pedido rechazado"), "Rechazar");
   if (a === "aceptar") return modal(`Aceptar · ${p.codigo}`, `<p>¿En cuántos minutos estará listo? El cliente lo ve en su seguimiento.</p><div class="tiempos">${[15, 20, 25, 30, 40, 50].map(t => `<label class="rd"><input type="radio" name="tiempo" value="${t}" ${t === 25 ? "checked" : ""}><span>${t} min</span></label>`).join("")}</div>${fld("imprimir", "Imprimir comanda para cocina", true, { type: "checkbox" })}`,
     async d => { if (d.imprimir) comanda(p); await fin([upd({ estado: "cocina", tiempo: +d.tiempo, aceptado: new Date().toISOString() })], "Pedido aceptado 🔥"); }, "Aceptar pedido");
+  if (a === "aceptarS") { await fin([upd({ estado: "cocina", aceptado: new Date().toISOString() })], "Solicitud aceptada"); return modal("Llama al cliente", `<p>Coordina el servicio con <b>${esc(p.cliente.nombre)}</b>.</p><a class="btn btn-pri btn-lg" href="tel:${esc(p.cliente.celular)}">📞 Llamar al ${esc(p.cliente.celular)}</a>`, null); }
+  if (a === "terminar") return modal(`Terminar · ${p.codigo}`, `${fld("monto", "¿Cuánto cobraste? (S/)", p.subtotal, { type: "number", req: true, extra: 'min="0" step="0.1"' })}${fld("metodo", "Método", "Efectivo", { opts: METODOS })}`, async d =>
+    fin([upd({ estado: "entregado", pagado: +d.monto, montoFinal: +d.monto, pagoReal: d.metodo, entregado: new Date().toISOString() }), movimiento({ concepto: `Servicio ${p.codigo} · ${p.cliente.nombre}`, monto: +d.monto, metodo: d.metodo, pedido: p.id })], "Servicio terminado"), "Terminado");
   if (a === "listo") return fin([upd({ estado: "listo", listo: new Date().toISOString() })], p.entrega === "delivery" ? "Listo · esperando al repartidor" : "Listo para recoger");
   if (a === "salio") return fin([upd({ estado: "camino", despachado: new Date().toISOString() })], "Pedido en camino 🛵");
   if (a === "entregar") {
@@ -241,10 +262,11 @@ let CATS = [], PRODS = [], PQ = "";
 async function cargarCarta() { [CATS, PRODS] = await Promise.all([DB.list(`negocios/${NEG.id}/categorias`), DB.list(`negocios/${NEG.id}/productos`)]); CATS.sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99)); PRODS.sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999)); }
 VIEWS.carta = async () => {
   await cargarCarta(); const l = PRODS.filter(p => norm(p.nombre).includes(norm(PQ))), cn = id => (CATS.find(c => c.id === id) || {}).nombre || "Sin categoría";
-  $("#view").innerHTML = topBar("Carta y precios", "Lo que cambies aquí se ve al instante en la app.", `<button class="btn btn-light btn-sm" id="nCat">${ico("grid")} Categorías (${CATS.length})</button><button class="btn btn-pri btn-sm" id="nPl">${ico("plus")} Plato</button>`) + `
+  const SV = rubroDe(NEG.rubro).modo === "servicios";
+  $("#view").innerHTML = topBar(SV ? "Servicios y precios" : "Carta y precios", SV ? "Tus servicios con su precio «desde». El cliente te envía una solicitud y te llama." : "Lo que cambies aquí se ve al instante en la app.", `<button class="btn btn-light btn-sm" id="nCat">${ico("grid")} Categorías (${CATS.length})</button><button class="btn btn-pri btn-sm" id="nPl">${ico("plus")} Plato</button>`) + `
     ${!CATS.length ? `<div class="alert warn">${ico("alert")} <span>Primero crea tus <b>categorías</b> (ej. Pollos, Combos, Bebidas) y luego agrega tus platos.</span></div>` : ""}
     <section class="card"><div class="card-h"><input class="q" id="pq" placeholder="Buscar plato…" value="${esc(PQ)}"><span class="muted sm">${l.length} plato(s)</span></div>
-      <div class="tbl-w"><table class="tbl"><thead><tr><th></th><th>Plato</th><th>Categoría</th><th class="r">Precio</th><th>Hay hoy</th><th>Visible</th><th></th></tr></thead><tbody>
+      <div class="tbl-w"><table class="tbl"><thead><tr><th></th><th>Plato</th><th>Categoría</th><th class="r">${SV ? "Desde" : "Precio"}</th><th>${SV ? "Disponible" : "Hay hoy"}</th><th>Visible</th><th></th></tr></thead><tbody>
       ${l.map(p => `<tr class="${p.activo === false ? "off" : ""}"><td>${p.foto ? `<span class="p-th" style="background-image:url('${esc(p.foto)}')"></span>` : `<span class="p-th em">🍽️</span>`}</td><td><b>${esc(p.nombre)}</b><small>${(p.opciones || []).map(g => esc(g.titulo)).join(" · ") || "sin opciones"}</small></td><td>${esc(cn(p.cat))}</td>
         <td class="r"><input class="q precio" type="number" min="0" step="0.1" value="${p.precio}" data-pr="${esc(p.id)}" aria-label="Precio de ${esc(p.nombre)}"></td>
         <td><label class="sw"><input type="checkbox" data-hay="${esc(p.id)}" ${p.agotado ? "" : "checked"}><i></i><span>${p.agotado ? "Agotado" : "Sí"}</span></label></td><td><label class="sw"><input type="checkbox" data-vis="${esc(p.id)}" ${p.activo === false ? "" : "checked"}><i></i></label></td>
@@ -270,7 +292,7 @@ function formPlato(p) {
   let G = JSON.parse(JSON.stringify(p?.opciones || [])), FOTO = p?.foto || "", leerG = () => {};
   const plant = {}; PRODS.forEach(x => (x.opciones || []).forEach(g => { const k = g.titulo + "|" + gruposTxt(g); if (!plant[k]) plant[k] = g; }));
   modal(p ? "Editar plato" : "Nuevo plato", `<div class="g2"><div class="full"><span class="lbl">Foto</span><div class="foto-up"><span id="fPrev" style="background-image:url('${esc(FOTO)}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir foto<input type="file" accept="image/*" id="fFile" hidden></label><button type="button" class="btn btn-light btn-sm" id="fX">Quitar</button></div></div>
-    ${fld("nombre", "Nombre", p?.nombre || "", { req: true, full: true })}${fld("cat", "Categoría", p?.cat || CATS[0]?.id, { opts: CATS.map(c => [c.id, c.nombre]) })}${fld("precio", "Precio (S/)", p?.precio ?? "", { type: "number", req: true, extra: 'min="0" step="0.1"' })}
+    ${fld("nombre", "Nombre", p?.nombre || "", { req: true, full: true })}${fld("cat", "Categoría", p?.cat || CATS[0]?.id, { opts: CATS.map(c => [c.id, c.nombre]) })}${fld("precio", rubroDe(NEG.rubro).modo === "servicios" ? "Precio desde (S/)" : "Precio (S/)", p?.precio ?? "", { type: "number", req: true, extra: 'min="0" step="0.1"' })}
     ${fld("desc", "Descripción corta", p?.desc || "", { type: "textarea", full: true, rows: 2 })}
     ${fld("destacado", "⭐ Favorito (sale arriba)", !!p?.destacado, { type: "checkbox" })}${fld("sugerirBebida", "Ofrecer bebida al agregarlo", p ? !!p.sugerirBebida : false, { type: "checkbox" })}
     ${(NEG.extrasGratis || []).length ? fld("extrasGratis", `Ofrecer extras gratis (${esc(NEG.extrasGratis.slice(0, 3).join(", "))}…)`, !!p?.extrasGratis, { type: "checkbox" }) : ""}${fld("agotado", "Agotado hoy", !!p?.agotado, { type: "checkbox" })}${fld("activo", "Visible en la app", p ? p.activo !== false : true, { type: "checkbox" })}
@@ -311,7 +333,7 @@ VIEWS.caja = async () => {
 
 /* ================= NEGOCIO · COMISIÓN ================= */
 VIEWS.comision = async () => {
-  const mes = HOY().slice(0, 7), l = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["mes", "==", mes])).filter(p => p.estado === "entregado"), pct = pctDe(NEG), v = l.reduce((a, p) => a + (+p.subtotal || 0), 0);
+  const mes = HOY().slice(0, 7), l = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["mes", "==", mes])).filter(p => p.estado === "entregado"), pct = pctDe(NEG), v = l.reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0);
   $("#view").innerHTML = topBar("Comisión Apamuy", `Apamuy cobra el ${pct}% de la comida de cada pedido entregado por la app.`) + `
     <div class="kpis neon"><div class="kpi"><span>Ventas por la app (mes)</span><b>${S(v)}</b><small>${l.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Comisión del mes</span><b>${S(v * pct / 100)}</b><small>${pct}%</small></div></div>
     <section class="card"><p>📅 Cada semana te enviaremos tu liquidación para pagar por Yape. Muy pronto la verás aquí con el botón para subir tu pago.</p></section>`;
@@ -324,11 +346,11 @@ function vigilarAdm() { DB.escucharLista("negocios", [["estado", "==", "pendient
 /* ================= ADMIN · RESUMEN ================= */
 VIEWS.resumen = async () => {
   const [ns, hoy, mes] = await Promise.all([DB.list("negocios"), DB.list("pedidos", ["dia", "==", HOY()]), DB.list("pedidos", ["mes", "==", HOY().slice(0, 7)])]);
-  const ent = l => l.filter(p => p.estado === "entregado"), com = l => ent(l).reduce((a, p) => a + (+p.subtotal || 0) * pctDe(ns.find(n => n.id === p.negocioId)) / 100, 0);
+  const ent = l => l.filter(p => p.estado === "entregado"), com = l => ent(l).reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0) * pctDe(ns.find(n => n.id === p.negocioId)) / 100, 0);
   const pend = ns.filter(n => n.estado === "pendiente");
   $("#view").innerHTML = topBar("Resumen de Apamuy", "Todo lo que pasa en la plataforma.") + `
     <div class="kpis neon"><div class="kpi"><span>Negocios activos</span><b>${ns.filter(n => n.estado === "activo").length}</b><small>${pend.length} por revisar</small></div><div class="kpi"><span>Pedidos de hoy</span><b>${hoy.length}</b><small>${ent(hoy).length} entregados</small></div>
-      <div class="kpi"><span>Ventas de hoy</span><b>${S(ent(hoy).reduce((a, p) => a + (+p.subtotal || 0), 0))}</b><small>comida entregada</small></div><div class="kpi"><span>Tu comisión hoy</span><b>${S(com(hoy))}</b></div><div class="kpi"><span>Tu comisión del mes</span><b>${S(com(mes))}</b><small>${ent(mes).length} pedidos</small></div></div>
+      <div class="kpi"><span>Ventas de hoy</span><b>${S(ent(hoy).reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0))}</b><small>comida entregada</small></div><div class="kpi"><span>Tu comisión hoy</span><b>${S(com(hoy))}</b></div><div class="kpi"><span>Tu comisión del mes</span><b>${S(com(mes))}</b><small>${ent(mes).length} pedidos</small></div></div>
     <section class="card"><div class="card-h"><h2>${ico("clock")} Negocios por revisar</h2><button class="btn btn-light btn-sm" data-go="negocios">Ver todos</button></div>
       <ul class="lst">${pend.map(n => `<li><div><b>${esc(n.nombre)}</b><small>${esc(n.tipo)} · ${esc(n.email || "")} · ${hace(n.creado)}</small></div><button class="btn btn-pri btn-sm" data-rev="${esc(n.id)}">Revisar</button></li>`).join("") || `<li class="muted">No hay negocios esperando. 👍</li>`}</ul></section>`;
   $("#view").onclick = e => { const b = e.target.closest("[data-rev]"); if (b) verNegocio(ns.find(n => n.id === b.dataset.rev)); };
@@ -340,7 +362,7 @@ VIEWS.negocios = async () => {
   const ns = (await DB.list("negocios")).sort((a, b) => String(b.creado).localeCompare(a.creado)), l = ns.filter(n => !NF || n.estado === NF);
   $("#view").innerHTML = topBar("Negocios", "Aprueba, suspende y revisa cada negocio. Su carta solo la edita su dueño.") + `<div class="chips">${[["", "Todos"], ["pendiente", "En revisión"], ["activo", "Activos"], ["suspendido", "Suspendidos"], ["rechazado", "Rechazados"]].map(([k, t]) => `<button class="chip ${NF === k ? "on" : ""}" data-nf="${k}">${t} (${k ? ns.filter(n => n.estado === k).length : ns.length})</button>`).join("")}</div>
     <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th></th><th>Negocio</th><th>Dueño</th><th>Estado</th><th>Comisión</th><th></th></tr></thead><tbody>
-    ${l.map(n => `<tr><td>${n.logo ? `<span class="p-th" style="background-image:url('${esc(n.logo)}')"></span>` : `<span class="p-th em">🏪</span>`}</td><td><b>${esc(n.nombre)}</b><small>${esc(n.tipo || "")} · ${esc(n.direccion || "")}</small></td><td>${esc(n.email || "")}<small>${esc(n.telefono || "")}</small></td><td>${estN(n.estado)}</td><td>${pctDe(n)}%</td>
+    ${l.map(n => `<tr><td>${n.logo ? `<span class="p-th" style="background-image:url('${esc(n.logo)}')"></span>` : `<span class="p-th em">🏪</span>`}</td><td><b>${esc(n.nombre)}</b>${n.demo ? ` <span class="st mute">Ejemplo</span>` : ""}<small>${esc(rubroDe(n.rubro).nombre)} · ${esc(n.tipo || "")} · ${esc(n.distrito || "")}, ${esc(n.provincia || "")}</small></td><td>${esc(n.email || "")}<small>${esc(n.telefono || "")}</small></td><td>${estN(n.estado)}</td><td>${pctDe(n)}%</td>
       <td><button class="btn btn-light btn-sm" data-vn="${esc(n.id)}">Ver</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin negocios.</td></tr>`}</tbody></table></div></section>`;
   $("#view").onclick = e => { const f = e.target.closest("[data-nf]"); if (f) { NF = f.dataset.nf; return VIEWS.negocios(); } const v = e.target.closest("[data-vn]"); if (v) verNegocio(ns.find(n => n.id === v.dataset.vn)); };
 };
@@ -348,7 +370,7 @@ async function verNegocio(n) {
   const [cats, prods] = await Promise.all([DB.list(`negocios/${n.id}/categorias`), DB.list(`negocios/${n.id}/productos`)]), doc = n.documento || {};
   modal(n.nombre, `<div class="nv">${n.portada ? `<img class="nv-p" src="${esc(n.portada)}" alt="">` : ""}<div class="nv-h">${n.logo ? `<img src="${esc(n.logo)}" alt="">` : ""}<div><b>${esc(n.nombre)}</b> ${estN(n.estado)}<small>${esc(n.tipo || "")} · registrado ${fmtF(n.creado)}</small></div></div>
     <dl class="dl"><dt>Dueño</dt><dd>${esc(n.email || "")}</dd><dt>Celular</dt><dd>${esc(n.telefono || "")} ${n.whatsapp ? `· <a href="${wa(n.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</dd>
-      <dt>${esc(doc.tipo || "Doc.")}</dt><dd>${esc(doc.numero || "")} · ${esc(doc.nombre || "")}</dd><dt>Dirección</dt><dd>${esc(n.direccion || "")}${n.referencia ? " · " + esc(n.referencia) : ""}${n.ubic ? ` · <a href="https://maps.google.com/?q=${n.ubic.lat},${n.ubic.lng}" target="_blank" rel="noopener">Ver en mapa</a>` : ""}</dd>
+      <dt>Rubro</dt><dd>${esc(rubroDe(n.rubro).nombre)} · ${esc(n.tipo || "")}${n.registro ? ` · ${esc(rubroDe(n.rubro).requiereRegistro || "Registro")}: <b>${esc(n.registro)}</b>` : ""}</dd><dt>Ciudad</dt><dd>${esc(n.distrito || "")}, ${esc(n.provincia || "")} (${esc(n.departamento || "")})</dd><dt>${esc(doc.tipo || "Doc.")}</dt><dd>${esc(doc.numero || "")} · ${esc(doc.nombre || "")}</dd><dt>Dirección</dt><dd>${esc(n.direccion || "")}${n.referencia ? " · " + esc(n.referencia) : ""}${n.ubic ? ` · <a href="https://maps.google.com/?q=${n.ubic.lat},${n.ubic.lng}" target="_blank" rel="noopener">Ver en mapa</a>` : ""}</dd>
       <dt>Horario</dt><dd>${esc(n.abre)} a ${esc(n.cierra)} · ${(n.dias || []).map(i => DIAS[i]).join(", ")}</dd><dt>Pagos</dt><dd>${[n.pagoYape && "Yape " + esc(n.yapeNum || ""), n.pagoPlin && "Plin " + esc(n.plinNum || ""), n.contraEntrega && "Efectivo"].filter(Boolean).join(" · ")}</dd>
       <dt>Carta</dt><dd>${cats.length} categoría(s) · ${prods.length} plato(s)${prods.length ? ": " + esc(prods.slice(0, 6).map(p => p.nombre).join(", ")) + (prods.length > 6 ? "…" : "") : ""}</dd>${n.motivo ? `<dt>Nota</dt><dd>${esc(n.motivo)}</dd>` : ""}</dl>
     <div class="g2">${fld("estado", "Estado", n.estado, { opts: [["pendiente", "En revisión"], ["activo", "Activo (aparece en la app)"], ["suspendido", "Suspendido"], ["rechazado", "Rechazado"]] })}${fld("comision", "Comisión % (vacío = general " + CONF.comision + "%)", n.comision ?? "", { type: "number", extra: 'min="0" max="50" step="0.5"' })}
@@ -365,7 +387,11 @@ VIEWS.pedidosAdm = async () => {
   PA_D = PA_D || HOY(); const [l, ns] = await Promise.all([DB.list("pedidos", ["dia", "==", PA_D]), DB.list("negocios")]); l.sort((a, b) => String(b.creado).localeCompare(a.creado));
   $("#view").innerHTML = topBar("Pedidos de toda la plataforma", "Solo lectura: cada negocio atiende los suyos.", `<input type="date" class="q" id="pd" value="${PA_D}">`) + `
     <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Hora</th><th>Código</th><th>Negocio</th><th>Cliente</th><th>Entrega</th><th>Pago</th><th class="r">Comida</th><th>Estado</th></tr></thead><tbody>
-    ${l.map(p => `<tr><td>${fmtH(p.creado)}</td><td class="mono">${esc(p.codigo)}</td><td>${esc(p.negocio.nombre)}</td><td>${esc(p.cliente.nombre)}<small>${esc(p.cliente.celular)}</small></td><td>${p.entrega === "delivery" ? `🛵 ${p.km} km` : "🏪"}</td><td>${esc(p.pago)}</td><td class="r">${S(p.subtotal)}</td><td>${estP(p.estado, p)}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Sin pedidos ese día.</td></tr>`}</tbody></table></div></section>`;
+    ${l.map(p => `<tr><td>${fmtH(p.creado)}</td><td class="mono">${esc(p.codigo)}</td><td>${esc(p.negocio.nombre)}</td><td>${esc(p.cliente.nombre)}<small>${esc(p.cliente.celular)}</small></td><td>${p.entrega === "delivery" ? `🛵 ${p.km} km` : "🏪"}</td><td>${esc(p.pago)}</td><td class="r">${S(p.subtotal)}</td><td>${estP(p.estado, p)}${String(p.negocioId).startsWith("demo-") && !["entregado", "anulado", "rechazado"].includes(p.estado) ? ` <button class="btn btn-light btn-xs" data-at="${esc(p.id)}">Atender</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Sin pedidos ese día.</td></tr>`}</tbody></table></div>
+    <p class="muted sm">Los pedidos a <b>tiendas de ejemplo</b> los puedes avanzar tú con «Atender» para probar el seguimiento del cliente.</p></section>`;
+  $("#view").onclick = e => { const b = e.target.closest("[data-at]"); if (!b) return; const p = l.find(x => x.id === b.dataset.at);
+    modal(`Tienda de ejemplo · ${p.codigo}`, fld("estado", "Nuevo estado", p.estado, { opts: [["nuevo", "Recibido"], ["cocina", "Preparando"], ["listo", "Listo"], ["camino", "En camino"], ["entregado", "Entregado"], ["anulado", "Anulado"]] }),
+      async d => { await DB.set("pedidos", p.id, { estado: d.estado, ...(d.estado === "cocina" ? { tiempo: 25 } : {}), actualizado: new Date().toISOString() }); toast("Estado cambiado"); VIEWS.pedidosAdm(); }, "Guardar"); };
   $("#pd").onchange = e => { PA_D = e.target.value; VIEWS.pedidosAdm(); };
 };
 
@@ -408,4 +434,90 @@ VIEWS.config = async () => {
   F.onsubmit = async e => { e.preventDefault(); const v = datosForm(F);
     await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 8 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, "") });
     await cargarConfig(); toast("Configuración guardada"); };
+};
+
+/* ================= ADMIN · PÁGINA WEB (textos de la portada y ejemplos) ================= */
+VIEWS.web = async () => {
+  await cargarConfig(); const W = CONF.web, c = CONF.ciudadInicial, U = window.UBIGEO || {};
+  $("#view").innerHTML = topBar("Página web de Apamuy", "Todo lo que ven los clientes en la portada. Se guarda y se ve al instante.", `<a class="btn btn-light btn-sm" href="${esc(AP.web)}" target="_blank" rel="noopener">${ico("arrow")} Ver la web</a>`) + `
+    <section class="card hi"><h2>${ico("download")} Ejemplos</h2><p>Carga los rubros (Comida, Farmacia, Talleres…), 2 banners y <b>4 negocios de comida en Cusco</b> con sus platos y fotos. Los negocios salen con la etiqueta «Ejemplo» y los puedes borrar cuando quieras.</p>
+      <div class="acts-g"><button class="btn btn-pri" id="ejCargar">Cargar ejemplos</button><button class="btn btn-light danger" id="ejBorrar">Borrar negocios de ejemplo</button></div></section>
+    <form class="card" id="wF"><h2>${ico("star")} Portada</h2><div class="g2">
+      ${fld("titulo", "Título grande", W.titulo, { full: true })}${fld("subtitulo", "Texto debajo del título", W.subtitulo, { full: true })}${fld("buscador", "Texto del buscador", W.buscador, { full: true })}
+      ${fld("anuncio", "Barra de anuncio arriba (vacío = no se muestra)", W.anuncio, { full: true, ph: "Ej. 🎉 Delivery gratis este fin de semana en Cusco" })}</div>
+      <h2>${ico("grid")} Secciones</h2><div class="g2">${fld("mostrarBanners", "Mostrar banners", W.mostrarBanners, { type: "checkbox" })}${fld("mostrarDestacados", "Mostrar productos recomendados", W.mostrarDestacados, { type: "checkbox" })}
+      ${fld("tituloDestacados", "Título de recomendados", W.tituloDestacados)}${fld("tituloNegocios", "Título de la lista de negocios", W.tituloNegocios)}</div>
+      <h2>${ico("pin")} Ciudad para visitantes nuevos</h2><div class="g2"><label class="fld"><span>Departamento</span><select name="dep" id="wDep">${Object.keys(U).sort().map(d => `<option ${d === c.dep ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></label><label class="fld"><span>Provincia</span><select name="prov" id="wProv"></select></label></div>
+      <h2>${ico("msg")} Pie de página y redes</h2><div class="g2">${fld("pie", "Frase del pie de página", W.pie, { full: true })}${fld("facebook", "Facebook", W.facebook, { type: "url" })}${fld("instagram", "Instagram", W.instagram, { type: "url" })}${fld("tiktok", "TikTok", W.tiktok, { type: "url" })}</div>
+      <div class="f-end"><button class="btn btn-pri">${ico("check")} Guardar</button></div></form>`;
+  const pv = () => { const d = $("#wDep").value; $("#wProv").innerHTML = Object.keys(U[d] || {}).sort().map(p => `<option ${p === c.prov ? "selected" : ""}>${esc(p)}</option>`).join(""); }; pv(); $("#wDep").onchange = pv;
+  $("#wF").onsubmit = async e => { e.preventDefault(); const d = datosForm(e.currentTarget);
+    await DB.set("config", "general", { web: { titulo: d.titulo, subtitulo: d.subtitulo, buscador: d.buscador, anuncio: d.anuncio, mostrarBanners: d.mostrarBanners, mostrarDestacados: d.mostrarDestacados, tituloDestacados: d.tituloDestacados, tituloNegocios: d.tituloNegocios,
+      pie: d.pie, facebook: d.facebook, instagram: d.instagram, tiktok: d.tiktok }, ciudadInicial: { dep: d.dep, prov: d.prov } }); await cargarConfig(); toast("Portada guardada · ya se ve en la web"); };
+  $("#ejCargar").onclick = async () => {
+    if (!confirm("Se crearán los rubros, 2 banners y 4 negocios de ejemplo en Cusco. Los rubros y banners que ya tengas con el mismo nombre se actualizan. ¿Continuar?")) return;
+    const s = window.AM_SEMILLA(), ops = [];
+    Object.entries(s).forEach(([col, docs]) => Object.entries(docs).forEach(([id, data]) => ops.push({ op: "set", col, id, data })));
+    $("#ejCargar").disabled = true; $("#ejCargar").textContent = "Cargando…";
+    try { await DB.batch(ops); await cargarRubros(true); toast(`✅ Listo: ${Object.keys(s.negocios).length} negocios y ${Object.keys(s.rubros).length} rubros de ejemplo`); }
+    catch (x) { toast("No se pudo: " + (x.code || x.message) + ". ¿Publicaste las reglas nuevas?", true); }
+    $("#ejCargar").disabled = false; $("#ejCargar").textContent = "Cargar ejemplos";
+  };
+  $("#ejBorrar").onclick = async () => {
+    const ns = (await DB.list("negocios")).filter(n => String(n.id).startsWith("demo-")); if (!ns.length) return toast("No hay negocios de ejemplo");
+    if (!confirm(`¿Borrar ${ns.length} negocios de ejemplo con sus platos?`)) return; const ops = [];
+    for (const n of ns) { for (const sub of ["productos", "categorias"]) (await DB.list(`negocios/${n.id}/${sub}`)).forEach(x => ops.push({ op: "del", col: `negocios/${n.id}/${sub}`, id: x.id })); ops.push({ op: "del", col: "negocios", id: n.id }); }
+    await DB.batch(ops); toast("Negocios de ejemplo borrados");
+  };
+};
+
+/* ================= ADMIN · RUBROS ================= */
+VIEWS.rubros = async () => {
+  await cargarRubros(true); const ns = await DB.list("negocios");
+  $("#view").innerHTML = topBar("Rubros", "Las categorías grandes de Apamuy, con su imagen. Agrega las que quieras para que la plataforma crezca.", `<button class="btn btn-pri btn-sm" id="nR">${ico("plus")} Rubro</button>`) + `
+    <section class="card"><div class="rb-grid">${RUBROS.map((r, i) => `<div class="rb-c ${r.activo === false ? "off" : ""}"><span class="rb-i" style="background:${esc(r.color || "#FFF1E6")}">${r.imagen ? `<img src="${esc(imgUrl(r.imagen))}" alt="">` : ""}</span>
+      <div><b>${esc(r.nombre)}</b><small>${r.modo === "servicios" ? "🔧 Servicios" : "🛍️ Productos"}${r.mayorEdad ? " · 🔞 +18" : ""}${r.requiereRegistro ? " · 📄 registro" : ""} · ${ns.filter(n => (n.rubro || "comida") === r.id).length} negocio(s)${r.activo === false ? " · oculto" : ""}</small></div>
+      <div class="rb-a"><button class="btn btn-light btn-xs" data-up="${i}" ${i ? "" : "disabled"} aria-label="Subir">▲</button><button class="btn btn-light btn-xs" data-dn="${i}" ${i < RUBROS.length - 1 ? "" : "disabled"} aria-label="Bajar">▼</button><button class="btn btn-light btn-sm" data-er="${esc(r.id)}">${ico("edit")}</button></div></div>`).join("")
+      || vacio("Aún no hay rubros. Ve a «Página web» → Cargar ejemplos, o crea el primero.")}</div></section>`;
+  const form = r => { let IMG = r?.imagen || "";
+    modal(r ? r.nombre : "Nuevo rubro", `<div class="g2"><div class="full"><span class="lbl">Imagen (cuadrada, PNG con fondo transparente queda mejor)</span><div class="foto-up"><span id="rPrev" style="background-image:url('${esc(imgUrl(IMG))}');background-size:contain;background-color:${esc(r?.color || "#FFF1E6")}"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir imagen<input type="file" accept="image/*" id="rFile" hidden></label></div></div>
+      ${fld("nombre", "Nombre", r?.nombre || "", { req: true, ph: "Ej. Mascotas" })}${fld("color", "Color de fondo", r?.color || "#FFF1E6", { type: "color" })}
+      ${fld("modo", "¿Qué ofrecen?", r?.modo || "productos", { opts: [["productos", "Productos (se piden y se entregan)"], ["servicios", "Servicios (el cliente solicita y el negocio lo llama)"]] })}
+      ${fld("tipos", "Tipos de negocio (uno por línea)", (r?.tipos || []).join("\n"), { type: "textarea", rows: 4, full: true })}
+      ${fld("mayorEdad", "Solo mayores de 18 (licor, cigarros…)", !!r?.mayorEdad, { type: "checkbox" })}${fld("activo", "Visible en la web", r ? r.activo !== false : true, { type: "checkbox" })}
+      ${fld("requiereRegistro", "Registro que debe dar el negocio (vacío = ninguno)", r?.requiereRegistro || "", { full: true, ph: "Ej. N° de registro DIGEMID" })}${fld("aviso", "Aviso para los clientes (vacío = ninguno)", r?.aviso || "", { full: true })}</div>`, async d => {
+      const id = r?.id || slug(d.nombre) || "rubro-" + Date.now().toString(36); if (!r && RUBROS.find(x => x.id === id)) { toast("Ya existe un rubro con ese nombre", true); return false; }
+      const imagen = await subirFoto(`web/rubros/${id}-${Date.now().toString(36)}.png`, IMG);
+      await DB.set("rubros", id, { nombre: d.nombre, color: d.color, modo: d.modo, tipos: d.tipos.split("\n").map(x => x.trim()).filter(Boolean), mayorEdad: d.mayorEdad, activo: d.activo, requiereRegistro: d.requiereRegistro, aviso: d.aviso, imagen, orden: r?.orden ?? RUBROS.length });
+      toast("Rubro guardado · ya se ve en la web"); VIEWS.rubros(); }, "Guardar", { wide: true, alAbrir: () => {
+      $("#rFile").onchange = async e => { const f = e.target.files[0]; if (!f) return; IMG = await redimensionar(f, 300, .9, "image/png"); $("#rPrev").style.backgroundImage = `url('${IMG}')`; }; } }); };
+  $("#nR").onclick = () => form();
+  $("#view").onclick = async e => { const ed = e.target.closest("[data-er]"), up = e.target.closest("[data-up]"), dn = e.target.closest("[data-dn]");
+    if (ed) return form(RUBROS.find(r => r.id === ed.dataset.er));
+    if (up || dn) { const i = +(up || dn).dataset[up ? "up" : "dn"], j = up ? i - 1 : i + 1, l = RUBROS.slice(); [l[i], l[j]] = [l[j], l[i]]; await DB.batch(l.map((r, k) => ({ op: "set", col: "rubros", id: r.id, data: { orden: k } }))); VIEWS.rubros(); } };
+};
+
+/* ================= ADMIN · BANNERS ================= */
+VIEWS.banners = async () => {
+  const l = (await DB.list("banners")).sort((a, b) => (a.orden ?? 9) - (b.orden ?? 9)), ns = (await DB.list("negocios")).filter(n => n.estado === "activo");
+  const destino = b => b.enlace === "panel" ? "Registro de negocios" : String(b.enlace || "").startsWith("rubro:") ? "Rubro " + rubroDe(b.enlace.slice(6)).nombre : String(b.enlace || "").startsWith("negocio:") ? "Negocio " + ((ns.find(n => n.id === b.enlace.slice(8)) || {}).nombre || "") : b.enlace || "—";
+  $("#view").innerHTML = topBar("Banners", "Las promociones grandes de la portada. Puedes mostrarlas en todas las ciudades o solo en una.", `<button class="btn btn-pri btn-sm" id="nB">${ico("plus")} Banner</button>`) + `
+    <section class="card"><div class="bn-l">${l.map(b => `<div class="bn-c ${b.activo === false ? "off" : ""}" style="--bn:${esc(b.color || "#E63946")}"><div><b>${esc(b.titulo)}</b><p>${esc(b.texto || "")}</p><small>→ ${esc(destino(b))} · ${b.prov ? esc(b.prov.replace("|", " / ")) : "Todas las ciudades"}${b.activo === false ? " · oculto" : ""}</small></div>${b.imagen ? `<img src="${esc(imgUrl(b.imagen))}" alt="">` : ""}<button class="btn btn-light btn-sm" data-eb="${esc(b.id)}">${ico("edit")}</button></div>`).join("") || vacio("Sin banners.")}</div></section>`;
+  const form = b => { let IMG = b?.imagen || ""; const U = window.UBIGEO || {}, provs = [["", "Todas las ciudades"], ...Object.entries(U).flatMap(([d, ps]) => Object.keys(ps).map(p => [provKey(d, p), `${p} (${d})`])).sort((x, y) => x[1].localeCompare(y[1]))];
+    modal(b ? "Editar banner" : "Nuevo banner", `<div class="g2">${fld("titulo", "Título", b?.titulo || "", { req: true, full: true })}${fld("texto", "Texto", b?.texto || "", { full: true })}${fld("boton", "Texto del botón", b?.boton || "Ver más")}${fld("color", "Color", b?.color || "#E63946", { type: "color" })}
+      ${fld("tipoE", "Al tocarlo lleva a", String(b?.enlace || "rubro:").split(":")[0] === "rubro" ? "rubro" : String(b?.enlace || "").startsWith("negocio:") ? "negocio" : b?.enlace === "panel" ? "panel" : b ? "url" : "rubro", { opts: [["rubro", "Un rubro"], ["negocio", "Un negocio"], ["panel", "Registro de negocios"], ["url", "Otra página (enlace)"]] })}
+      ${fld("rubroE", "Rubro", String(b?.enlace || "").startsWith("rubro:") ? b.enlace.slice(6) : (RUBROS[0] || {}).id, { opts: RUBROS.map(r => [r.id, r.nombre]) })}${fld("negE", "Negocio", String(b?.enlace || "").startsWith("negocio:") ? b.enlace.slice(8) : "", { opts: ns.map(n => [n.id, `${n.nombre} · ${n.provincia || ""}`]) })}
+      ${fld("urlE", "Enlace https://", /^https?:/.test(b?.enlace || "") ? b.enlace : "", { type: "url" })}${fld("prov", "Mostrar en", b?.prov || "", { opts: provs })}${fld("activo", "Visible", b ? b.activo !== false : true, { type: "checkbox" })}
+      <div class="full"><span class="lbl">Imagen (opcional, se ve redonda a la derecha)</span><div class="foto-up"><span id="bPrev" style="background-image:url('${esc(imgUrl(IMG))}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir imagen<input type="file" accept="image/*" id="bFile" hidden></label><button type="button" class="btn btn-light btn-sm" id="bX">Quitar</button></div></div></div>
+      ${b ? `<button type="button" class="btn btn-light danger btn-sm" id="bDel">${ico("trash")} Eliminar banner</button>` : ""}`, async d => {
+      const enlace = d.tipoE === "rubro" ? "rubro:" + d.rubroE : d.tipoE === "negocio" ? "negocio:" + d.negE : d.tipoE === "panel" ? "panel" : d.urlE;
+      const id = b?.id || "b" + Date.now().toString(36), imagen = await subirFoto(`web/banners/${id}-${Date.now().toString(36)}.jpg`, IMG);
+      await DB.set("banners", id, { titulo: d.titulo, texto: d.texto, boton: d.boton, color: d.color, enlace, prov: d.prov, activo: d.activo, imagen, orden: b?.orden ?? l.length }); toast("Banner guardado"); VIEWS.banners(); }, "Guardar", { wide: true, alAbrir: F => {
+      const vis = () => { const t = $("[name=tipoE]", F).value; $("[name=rubroE]", F).closest("label").hidden = t !== "rubro"; $("[name=negE]", F).closest("label").hidden = t !== "negocio"; $("[name=urlE]", F).closest("label").hidden = t !== "url"; };
+      $("[name=tipoE]", F).onchange = vis; vis();
+      $("#bFile").onchange = async e => { const f = e.target.files[0]; if (!f) return; IMG = await redimensionar(f, 500, .8); $("#bPrev").style.backgroundImage = `url('${IMG}')`; };
+      $("#bX").onclick = () => { IMG = ""; $("#bPrev").style.backgroundImage = "none"; };
+      $("#bDel")?.addEventListener("click", async () => { if (!confirm("¿Eliminar este banner?")) return; await DB.del("banners", b.id); cerrarModal(); VIEWS.banners(); }); } }); };
+  $("#nB").onclick = () => form();
+  $("#view").onclick = e => { const x = e.target.closest("[data-eb]"); if (x) form(l.find(b => b.id === x.dataset.eb)); };
 };

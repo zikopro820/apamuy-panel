@@ -115,10 +115,29 @@ const errorAuth = e => ({ "auth/invalid-credential": "Correo o contraseña incor
   "auth/unauthorized-domain": "Falta autorizar este dominio en Firebase → Authentication → Dominios autorizados.", "auth/too-many-requests": "Demasiados intentos. Espera unos minutos." }[e.code] || ("No se pudo: " + (e.code || e.message)));
 
 /* ---------- Configuración general de la plataforma ---------- */
-const CONFIG_BASE = { comision: 10, delivery: { base: 4, porKm: 1, maxKm: 8 }, centro: AP.centro || { lat: -13.5226, lng: -71.9673 }, soporte: "",
-  tipos: ["Pollería", "Parrillas", "Comida criolla", "Chifa", "Pizzería", "Hamburguesas", "Cevichería", "Postres y cafés", "Jugos", "Bodega y minimarket", "Otros"] };
+const WEB_BASE = { titulo: "¿Qué quieres hoy?", subtitulo: "Pide a los negocios de tu ciudad. Te lo traemos a tu puerta.", buscador: "Busca comida, farmacia, ferretería…", anuncio: "",
+  mostrarBanners: true, mostrarDestacados: true, tituloDestacados: "Lo más recomendado", tituloNegocios: "Negocios en tu ciudad", pie: "Te lo traemos. Pide a los negocios de tu ciudad.", facebook: "", instagram: "", tiktok: "" };
+const CONFIG_BASE = { comision: 10, delivery: { base: 4, porKm: 1, maxKm: 8 }, centro: AP.centro || { lat: -13.5226, lng: -71.9673 }, soporte: "", ciudadInicial: { dep: "Cusco", prov: "Cusco" }, web: WEB_BASE };
 let CONF = { ...CONFIG_BASE };
-async function cargarConfig() { const c = await DB.get("config", "general").catch(() => null); CONF = { ...CONFIG_BASE, ...(c || {}), delivery: { ...CONFIG_BASE.delivery, ...((c || {}).delivery || {}) } }; return CONF; }
+async function cargarConfig() { const c = await DB.get("config", "general").catch(() => null) || {};
+  CONF = { ...CONFIG_BASE, ...c, delivery: { ...CONFIG_BASE.delivery, ...(c.delivery || {}) }, web: { ...WEB_BASE, ...(c.web || {}) } }; return CONF; }
+
+/* ---------- Rubros (Comida, Farmacia, Talleres…) que crea el admin ---------- */
+let RUBROS = [];
+async function cargarRubros(todos) { RUBROS = (await DB.list("rubros").catch(() => [])).filter(r => todos || r.activo !== false).sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99)); return RUBROS; }
+const rubroDe = id => RUBROS.find(r => r.id === id) || { id, nombre: id || "", tipos: [], modo: "productos" };
+// Las imágenes de ejemplo viven en la web de clientes (img/rubros/…). El panel las pide desde ahí.
+const imgUrl = src => !src ? "" : /^(https?:|data:|blob:)/.test(src) ? src : (window.ES_PANEL ? String(AP.web || "").replace(/\/$/, "") + "/" : "") + src;
+
+/* ---------- Ciudad (provincia) del cliente y del negocio ---------- */
+const provKey = (dep, prov) => `${dep}|${prov}`;
+// Distrito más cercano a un punto (con la lista oficial de distritos del Perú)
+function ciudadCercana(p) {
+  if (!p || !window.UBIGEO) return null; let best = null, bd = 1e9;
+  for (const [dep, provs] of Object.entries(UBIGEO)) for (const [prov, dis] of Object.entries(provs)) for (const [d, la, lo] of dis) { if (la == null) continue; const x = (la - p.lat) ** 2 + (lo - p.lng) ** 2; if (x < bd) { bd = x; best = { dep, prov, dis: d }; } }
+  return best;
+}
+const centroDe = (dep, prov, dis) => { const l = ((window.UBIGEO || {})[dep] || {})[prov] || []; const x = (dis && l.find(d => d[0] === dis)) || l.find(d => d[0] === prov) || l[0]; return x && x[1] != null ? { lat: x[1], lng: x[2] } : null; };
 
 /* ---------- Distancia y costo del delivery ---------- */
 function distanciaKm(a, b) {

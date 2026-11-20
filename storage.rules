@@ -12,6 +12,11 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == nid && imagen();
     }
+    // Imágenes de la portada (rubros y banners): solo el admin
+    match /web/{resto=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.email in ['admin@apamuy.com'] && imagen();
+    }
     // Capturas de pago: solo el cliente las sube (el negocio las ve con el enlace del pedido)
     match /capturas/{uid}/{archivo} {
       allow read: if request.auth != null && (request.auth.uid == uid || request.auth.token.email in ['admin@apamuy.com']);

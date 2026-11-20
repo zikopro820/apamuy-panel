@@ -2,6 +2,7 @@ APAMUY — Cómo dejarlo funcionando (etapa 1)
 ===========================================
 
 A) FIREBASE (proyecto apamuy-faf7a)
+ ¡Si ya pegaste las reglas antes, vuelve a pegar las NUEVAS (firestore.rules y storage.rules) y Publicar!
  1. Authentication → Método de acceso → habilita GOOGLE y CORREO/CONTRASEÑA.
     Authentication → Configuración → Dominios autorizados → Agregar: zikopro820.github.io  (y luego apamuy.app)
  2. Authentication → Usuarios → Agregar usuario:  admin@apamuy.com  + una contraseña segura.
@@ -17,7 +18,11 @@ B) GITHUB PAGES
  Panel:            https://zikopro820.github.io/apamuy-panel/
 
 C) PRIMERA PRUEBA
- 1. Entra al panel con admin@apamuy.com → Configuración: revisa comisión (10%) y tarifas de delivery → Guardar.
+ 0. Entra al panel con admin@apamuy.com → «Página web» → «Cargar ejemplos».
+    Crea los rubros (Comida, Súper, Farmacia, Licorería, Ferretería, Repuestos, Talleres), 2 banners
+    y 4 negocios de comida en Cusco con sus platos. En «Página web» también cambias los textos de la portada.
+    Los pedidos a tiendas de ejemplo los avanzas tú en «Pedidos» → «Atender».
+ 1. «Comisión y delivery»: revisa comisión (10%) y tarifas de delivery → Guardar.
  2. Con OTRA cuenta (tu Gmail, por ejemplo) entra al panel → «Regístralo aquí» → registra un negocio de prueba.
  3. Vuelve como admin → Negocios → Revisar → Estado «Activo» → Guardar.
  4. Con la cuenta del negocio: Carta y precios → Categorías → agrega platos con foto.
