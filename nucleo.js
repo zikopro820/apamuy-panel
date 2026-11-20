@@ -22,7 +22,8 @@ const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ
 const wa = (num, txt) => { let n = String(num || "").replace(/\D/g, ""); if (n.length === 9) n = "51" + n; return `https://wa.me/${n}${txt ? "?text=" + encodeURIComponent(txt) : ""}`; };
 const abrirWA = (num, txt) => window.open(wa(num, txt), "_blank", "noopener");
 function toast(m, bad) { let x = $("#toast"); if (!x) { x = document.createElement("div"); x.id = "toast"; x.setAttribute("role", "status"); document.body.appendChild(x); } x.textContent = m; x.className = "show" + (bad ? " bad" : ""); clearTimeout(x._t); x._t = setTimeout(() => x.className = "", 3500); }
-function cargarScript(src) { return new Promise((ok, no) => { if ($(`script[src="${src}"]`)?.dataset.ok) return ok(); const s = document.createElement("script"); s.src = src; s.onload = () => { s.dataset.ok = 1; ok(); }; s.onerror = no; document.head.appendChild(s); }); }
+function cargarScript(src) { return new Promise((ok, no) => { const ya = $(`script[src="${src}"]`); if (ya?.dataset.ok) return ok();
+  if (ya) { ya.addEventListener("load", () => ok()); ya.addEventListener("error", no); return; } const s = document.createElement("script"); s.src = src; s.onload = () => { s.dataset.ok = 1; ok(); }; s.onerror = no; document.head.appendChild(s); }); }
 function cargarCSS(href) { if (!$(`link[href="${href}"]`)) document.head.insertAdjacentHTML("beforeend", `<link rel="stylesheet" href="${href}">`); }
 function redimensionar(file, max = 1000, q = .78, tipo = "image/jpeg") { return new Promise((ok, no) => { const fr = new FileReader(); fr.onerror = no; fr.onload = () => { const im = new Image(); im.onerror = no; im.onload = () => {
   const k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
@@ -57,9 +58,15 @@ const DB = {
   async del(col, id) { return DB.batch([{ op: "del", col, id }]); },
   async batch(ops) {
     ops = ops.map(o => o.data ? { ...o, data: limpiar(o.data) } : o);
-    if (DEMO) { const d = LDB.get(); ops.forEach(o => { d[o.col] = d[o.col] || {}; if (o.op === "del") delete d[o.col][o.id]; else d[o.col][o.id] = o.merge === false ? o.data : { ...(d[o.col][o.id] || {}), ...o.data }; }); LDB.save(d); ESCUCHAS.forEach(f => f()); return; }
+    if (DEMO) { const d = LDB.get(); ops.forEach(o => { d[o.col] = d[o.col] || {}; if (o.op === "del") delete d[o.col][o.id]; else d[o.col][o.id] = o.merge === false ? o.data : mezclar(d[o.col][o.id] || {}, o.data); }); LDB.save(d); ESCUCHAS.forEach(f => f()); return; }
     const { fs, db } = await fb();
     for (let i = 0; i < ops.length; i += 450) { const b = fs.writeBatch(db); ops.slice(i, i + 450).forEach(o => o.op === "del" ? b.delete(fs.doc(db, o.col, o.id)) : b.set(fs.doc(db, o.col, o.id), o.data, { merge: o.merge !== false })); await b.commit(); }
+  },
+  // Transacción: fn(get, set). Si dos personas lo hacen a la vez, solo una gana (ej. tomar un pedido).
+  async transaccion(fn) {
+    if (DEMO) { const d = LDB.get(), ops = []; const r = await fn(async (col, id) => { const v = (d[col] || {})[id]; return v ? { ...v, id } : null; }, (col, id, data) => ops.push({ op: "set", col, id, data })); await DB.batch(ops); return r; }
+    const { fs, db } = await fb();
+    return fs.runTransaction(db, t => fn(async (col, id) => { const x = await t.get(fs.doc(db, col, id)); return x.exists() ? { ...x.data(), id: x.id } : null; }, (col, id, data) => t.set(fs.doc(db, col, id), limpiar(data), { merge: true })));
   },
   // Escucha en vivo un documento: cb(doc|null). Devuelve la función para dejar de escuchar.
   escuchar(col, id, cb) {
@@ -77,6 +84,8 @@ const DB = {
     return () => { vivo = false; stop(); };
   }
 };
+// Igual que Firebase con merge: los objetos se combinan por dentro; listas y valores se reemplazan
+function mezclar(a, b) { const r = { ...a }; for (const k in b) { const v = b[k]; r[k] = v && typeof v === "object" && !Array.isArray(v) && a[k] && typeof a[k] === "object" && !Array.isArray(a[k]) ? mezclar(a[k], v) : v; } return r; }
 function limpiar(o) { if (Array.isArray(o)) return o.map(limpiar); if (o && typeof o === "object") { const r = {}; for (const k in o) if (o[k] !== undefined) r[k] = limpiar(o[k]); return r; } return o; }
 
 /* ---------- Fotos: se suben a Firebase Storage y se guarda solo el enlace ---------- */
@@ -86,6 +95,19 @@ async function subirFoto(ruta, dataURL) {
   const { st, storage } = await fb(), r = st.ref(storage, ruta);
   await st.uploadString(r, dataURL, "data_url"); return st.getDownloadURL(r);
 }
+
+// Documentos privados (DNI, antecedentes, capturas): se guarda la RUTA, no un enlace público.
+// Solo el dueño y el admin pueden abrirlos (reglas de Storage).
+async function subirPrivado(ruta, dataURL) {
+  if (!dataURL || !String(dataURL).startsWith("data:")) return dataURL || "";
+  if (DEMO) return dataURL;
+  const { st, storage } = await fb(); await st.uploadString(st.ref(storage, ruta), dataURL, "data_url"); return ruta;
+}
+async function verPrivado(ruta) {
+  if (!ruta || /^(data:|https?:|blob:)/.test(ruta)) return ruta || "";
+  const { st, storage } = await fb(); return st.getDownloadURL(st.ref(storage, ruta));
+}
+const leerArchivo = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
 
 /* ---------- Sesión ---------- */
 const Sesion = {
@@ -117,15 +139,19 @@ const errorAuth = e => ({ "auth/invalid-credential": "Correo o contraseña incor
 /* ---------- Configuración general de la plataforma ---------- */
 const WEB_BASE = { titulo: "¿Qué quieres hoy?", subtitulo: "Pide a los negocios de tu ciudad. Te lo traemos a tu puerta.", buscador: "Busca comida, farmacia, ferretería…", anuncio: "",
   mostrarBanners: true, mostrarDestacados: true, tituloDestacados: "Lo más recomendado", tituloNegocios: "Negocios en tu ciudad", pie: "Te lo traemos. Pide a los negocios de tu ciudad.", facebook: "", instagram: "", tiktok: "" };
-const CONFIG_BASE = { comision: 10, delivery: { base: 4, porKm: 1, maxKm: 8 }, centro: AP.centro || { lat: -13.5226, lng: -71.9673 }, soporte: "", ciudadInicial: { dep: "Cusco", prov: "Cusco" }, web: WEB_BASE };
+// rep: lo que paga el repartidor (casaca y % de su ganancia del día). cobro: Yape de Apamuy donde le pagan.
+const CONFIG_BASE = { comision: 10, delivery: { base: 4, porKm: 1, maxKm: 8 }, centro: AP.centro || { lat: -13.5226, lng: -71.9673 }, soporte: "", ciudadInicial: { dep: "Cusco", prov: "Cusco" }, web: WEB_BASE, tipos: [],
+  rep: { comision: 10, casaca: 40 }, cobro: { yape: "", titular: "", qr: "" } };
 let CONF = { ...CONFIG_BASE };
 async function cargarConfig() { const c = await DB.get("config", "general").catch(() => null) || {};
-  CONF = { ...CONFIG_BASE, ...c, delivery: { ...CONFIG_BASE.delivery, ...(c.delivery || {}) }, web: { ...WEB_BASE, ...(c.web || {}) } }; return CONF; }
+  CONF = { ...CONFIG_BASE, ...c, delivery: { ...CONFIG_BASE.delivery, ...(c.delivery || {}) }, web: { ...WEB_BASE, ...(c.web || {}) }, rep: { ...CONFIG_BASE.rep, ...(c.rep || {}) }, cobro: { ...CONFIG_BASE.cobro, ...(c.cobro || {}) }, tipos: c.tipos || [] }; return CONF; }
 
 /* ---------- Rubros (Comida, Farmacia, Talleres…) que crea el admin ---------- */
 let RUBROS = [];
 async function cargarRubros(todos) { RUBROS = (await DB.list("rubros").catch(() => [])).filter(r => todos || r.activo !== false).sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99)); return RUBROS; }
 const rubroDe = id => RUBROS.find(r => r.id === id) || { id, nombre: id || "", tipos: [], modo: "productos" };
+// Rubros de envío grande (Ferretería y Talleres): van en carro; si el pedido es pequeño, solo en moto
+const envioGrande = id => { const r = rubroDe(id); return r.envioGrande ?? ["ferreteria", "talleres"].includes(id); };
 // Las imágenes de ejemplo viven en la web de clientes (img/rubros/…). El panel las pide desde ahí.
 const imgUrl = src => !src ? "" : /^(https?:|data:|blob:)/.test(src) ? src : (window.ES_PANEL ? String(AP.web || "").replace(/\/$/, "") + "/" : "") + src;
 
@@ -188,4 +214,8 @@ function miUbicacion() { return new Promise((ok, no) => { if (!navigator.geoloca
 
 /* ---------- Pedidos ---------- */
 const EST_P = { "por-validar": ["Pago por validar", "warn"], nuevo: ["Nuevo", "pri"], cocina: ["Preparando", "fire"], listo: ["Listo", "info"], camino: ["En camino", "info"], entregado: ["Entregado", "ok"], rechazado: ["Pago rechazado", "bad"], anulado: ["Anulado", "bad"] };
+const VEHIC = { moto: ["🛵", "Moto"], bici: ["🚲", "Bici"], carro: ["🚗", "Carro"] };
+const vehTxt = v => (VEHIC[v] || ["🛵", v || ""]).join(" ");
+// ¿Este repartidor puede llevar esta oferta? todos | carro (envío grande) | moto (envío pequeño de ferretería/taller)
+const puedeLlevar = (oferta, veh) => !oferta.vehiculo || oferta.vehiculo === "todos" || oferta.vehiculo === veh;
 const detItem = i => [i.opts, i.extras ? "Extras: " + i.extras : "", i.nota ? "Nota: " + i.nota : ""].filter(Boolean);

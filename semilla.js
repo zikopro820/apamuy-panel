@@ -10,9 +10,9 @@ window.AM_SEMILLA = function () {
   rubro("super", "Súper y bodegas", 1, { color: "#E3F6F1", tipos: ["Minimarket", "Bodega", "Frutas y verduras", "Panadería", "Otros"] });
   rubro("farmacia", "Farmacia", 2, { color: "#E6F7EE", tipos: ["Farmacia", "Botica"], requiereRegistro: "N° de registro DIGEMID", aviso: "Solo productos sin receta médica. Los medicamentos con receta se compran en la farmacia." });
   rubro("licoreria", "Licorería", 3, { color: "#F4ECF7", tipos: ["Licorería", "Cervecería"], mayorEdad: true, aviso: "Venta solo a mayores de 18 años. Tomar bebidas alcohólicas en exceso es dañino." });
-  rubro("ferreteria", "Ferretería", 4, { color: "#FDF2E2", tipos: ["Ferretería", "Materiales de construcción", "Pinturas", "Electricidad"] });
+  rubro("ferreteria", "Ferretería", 4, { color: "#FDF2E2", tipos: ["Ferretería", "Materiales de construcción", "Pinturas", "Electricidad"], envioGrande: true });
   rubro("repuestos", "Repuestos", 5, { color: "#EAF0F6", tipos: ["Autos", "Motos", "Bicicletas", "Llantas"] });
-  rubro("talleres", "Talleres", 6, { color: "#FDECEC", modo: "servicios", tipos: ["Mecánica", "Llantería", "Electricidad automotriz", "Motos", "Planchado y pintura"] });
+  rubro("talleres", "Talleres", 6, { color: "#FDECEC", modo: "servicios", tipos: ["Mecánica", "Llantería", "Electricidad automotriz", "Motos", "Planchado y pintura"], envioGrande: true });
 
   const B = {
     b1: { titulo: "Pollo a la brasa a tu puerta", texto: "Los mejores de Cusco, calientitos y con delivery.", boton: "Pedir ahora", enlace: "rubro:comida", imagen: F("Pollo_a_la_brasa_peruano.jpg", 600), color: "#E63946", prov: "", orden: 0, activo: true },

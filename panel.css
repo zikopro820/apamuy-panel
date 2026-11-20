@@ -283,3 +283,9 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .rb-i { width: 64px; height: 64px; border-radius: 14px; display: grid; place-items: center; flex: none; } .rb-i img { width: 50px; height: 50px; object-fit: contain; } .rb-a { display: flex; gap: 4px; }
 .bn-l { display: grid; gap: 10px; } .bn-c { display: flex; align-items: center; gap: 12px; background: var(--bn); color: #fff; border-radius: 16px; padding: 14px; } .bn-c.off { opacity: .5; } .bn-c > div { flex: 1; } .bn-c b { font-size: 1.1rem; } .bn-c p { margin: 2px 0; opacity: .9; } .bn-c small { opacity: .85; }
 .bn-c img { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,.6); }
+/* Repartidores */
+.rep-l { margin: 6px 0; font-size: .88rem; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; } .rep-l.busca { color: #8a5a00; background: #fff6dc; border-radius: 10px; padding: 6px 10px; }
+.docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-bottom: 8px; } .doc { display: grid; gap: 4px; text-decoration: none; color: inherit; font-size: .78rem; text-align: center; cursor: zoom-in; }
+.doc-i { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 10px; background: #f1ece4; display: grid; place-items: center; font-size: 1.6rem; border: 1px solid var(--line); }
+.pg-l { display: grid; gap: 10px; } .pg { display: grid; grid-template-columns: 90px 1fr auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; } .pg small { display: block; color: var(--muted); }
+.pg-c .doc-i { width: 90px; } @media (max-width: 700px) { .pg { grid-template-columns: 70px 1fr; } .pg .acts-g { grid-column: 1 / -1; } .pg-c .doc-i { width: 70px; } }

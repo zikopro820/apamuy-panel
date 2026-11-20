@@ -1,0 +1,8 @@
+APAMUY — Etapa 2 (repartidores): qué subir
+==========================================
+apamuy (web clientes) → sube todo el ZIP apamuy.zip (NO trae firebase-config.js: el tuyo se queda).
+   El cliente ahora ve «Buscando repartidor», el nombre, vehículo y placa, y su ubicación en vivo.
+apamuy-panel → sube todo el ZIP apamuy-panel.zip (NO trae firebase-config.js).
+   Nuevo: Repartidores, Cobros repartidores, «Tu Yape» en Configuración, tamaño de envío en Ferretería/Talleres.
+apamuy-repartidor → sube todo el ZIP apamuy-repartidor.zip y sigue COMO-CONFIGURAR.txt.
+¡Pega las reglas NUEVAS de Firestore y Storage!

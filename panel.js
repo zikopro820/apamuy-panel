@@ -5,8 +5,8 @@
    ========================================================= */
 const VIEWS = {}; let VISTA = "", YO = null, NEG = null, ADMIN = false;
 const NAV_NEG = [["inicio", "home", "Inicio"], ["pedidos", "bell", "Pedidos"], ["carta", "fire", "Carta y precios"], ["caja", "cash", "Caja"], ["comision", "percent", "Comisión Apamuy"], ["negocio", "store", "Mi negocio"]];
-const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["comisiones", "percent", "Comisiones"], ["clientes", "users", "Clientes"],
-  ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["config", "gear", "Comisión y delivery"]];
+const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["comisiones", "percent", "Comisiones"], ["repartidores", "bike", "Repartidores"], ["cobrosRep", "cash", "Cobros repartidores"],
+  ["clientes", "users", "Clientes"], ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["config", "gear", "Comisión y delivery"]];
 const ESTADOS_N = { pendiente: ["En revisión", "warn"], activo: ["Activo", "ok"], suspendido: ["Suspendido", "bad"], rechazado: ["Rechazado", "bad"] };
 const estN = e => { const [t, c] = ESTADOS_N[e] || [e, "mute"]; return `<span class="st ${c}">${t}</span>`; };
 const estP = (e, p) => { const [t, c] = EST_P[e] || [e, "mute"]; return `<span class="st ${c}">${p && p.entrega === "recojo" && e === "listo" ? "Listo para recoger" : t}</span>`; };
@@ -185,10 +185,11 @@ VIEWS.inicio = async () => {
 };
 
 /* ================= NEGOCIO · PEDIDOS (tablero) ================= */
-let PT = "activos", HIST_D = HOY();
+let PT = "activos", HIST_D = HOY(), PORCOB = null;
 VIEWS.pedidos = async silencioso => {
   if (NEG.estado !== "activo") { $("#view").innerHTML = topBar("Pedidos", "") + vacio("Cuando tu negocio esté aprobado, aquí llegarán tus pedidos con sonido."); return; }
   const lista = PT === "activos" ? PEDS : (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HIST_D])).sort((a, b) => String(b.creado).localeCompare(a.creado));
+  if (!silencioso || PORCOB === null) PORCOB = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HOY()]).catch(() => [])).filter(p => p.estado === "entregado" && p.repUid && !p.pagado && p.pago === "Efectivo");
   const ops = {}; PEDS.forEach(p => { if (p.operacion) ops[p.operacion] = (ops[p.operacion] || 0) + 1; });
   const tarjeta = p => { const al = [], m = minDesde(p.creado);
     if (p.estado === "por-validar") { if (p.montoLeido == null) al.push(["warn", "No se pudo leer el monto de la captura."]); else if (p.coincide === false) al.push(["bad", `La captura dice ${S(p.montoLeido)}.`]); if (p.fechaOk === false) al.push(["bad", "La fecha de la captura no es de hoy."]); if (p.operacion && ops[p.operacion] > 1) al.push(["bad", "N° de operación repetido."]); }
@@ -198,26 +199,46 @@ VIEWS.pedidos = async silencioso => {
       ${p.servicio ? `<p class="ped-nota">🔧 ${esc(p.servicio.detalle)}<br><small>${p.servicio.lugar === "domicilio" ? "🏠 A domicilio" : "En el taller"}${p.servicio.fecha ? " · " + fmtFH(p.servicio.fecha) : ""}</small></p>` : ""}<ul class="ped-it">${(p.items || []).map(i => `<li><b>${i.cant}×</b> ${esc(i.n)}${detItem(i).map(d => `<small>${esc(d)}</small>`).join("")}</li>`).join("")}</ul>
       ${p.nota ? `<p class="ped-nota">📝 ${esc(p.nota)}</p>` : ""}<p><b>Comida ${S(p.subtotal)}</b>${p.envio ? ` · delivery ${S(p.envio)}` : ""} · ${esc(p.pago)}${p.pagaCon ? ` · paga con ${S(p.pagaCon)} → vuelto ${S(p.pagaCon - p.total)}` : ""}${p.pagado ? ` <span class="st ok">Pagado</span>` : ""}</p>
       ${p.entrega === "delivery" && p.destino ? `<p class="muted">📍 ${esc(p.destino.texto)}${p.destino.referencia ? " · " + esc(p.destino.referencia) : ""} · ${p.km} km · <a href="https://maps.google.com/?q=${p.destino.lat},${p.destino.lng}" target="_blank" rel="noopener">Ver mapa</a></p>` : ""}
+      ${PT === "activos" ? lineaRep(p) : p.repartidor ? `<p class="rep-l">${vehTxt(p.repartidor.vehiculo)} ${esc(p.repartidor.nombre)}</p>` : ""}
       ${al.map(([c, t]) => `<div class="alert ${c} sm">${ico("alert")} ${t}</div>`).join("")}
       <div class="acts-g">${PT === "activos" ? accionesPedido(p) : ""}<button class="btn btn-light btn-sm" data-pa="comanda|${esc(p.id)}" title="Comanda para cocina">${ico("chef")}</button><button class="btn btn-wa btn-sm" data-pa="wa|${esc(p.id)}" title="WhatsApp al cliente">${ico("wa")}</button></div></div></article>`; };
   const COLS = [["Por atender", p => ["por-validar", "nuevo"].includes(p.estado)], [rubroDe(NEG.rubro).modo === "servicios" ? "En proceso" : "Preparando", p => p.estado === "cocina"], ["Listos", p => p.estado === "listo"], ["En camino", p => p.estado === "camino"]];
   const html = topBar("Pedidos", "Llegan solos y suenan. Avísale al cliente en cada paso.", `<div class="seg"><button class="${PT === "activos" ? "on" : ""}" data-pt="activos">En curso (${PEDS.length})</button><button class="${PT === "hist" ? "on" : ""}" data-pt="hist">Historial</button></div>${PT === "hist" ? `<input type="date" class="q" id="hD" value="${HIST_D}">` : ""}`)
     + (PT === "activos" ? (PEDS.some(p => p.estado === "por-validar") ? `<div class="alert warn">${ico("alert")} <span>Antes de validar, <b>confirma en tu app de Yape/Plin que el dinero llegó</b>. Una captura se puede editar.</span></div>` : "")
+      + (PORCOB.length ? `<div class="alert warn">${ico("cash")} <span><b>Comida por cobrar a repartidores:</b> ${PORCOB.map(p => `${esc(p.repartidor?.nombre || "")} · ${esc(p.codigo)} · <b>${S(p.subtotal)}</b> <button class="btn btn-light btn-xs" data-pa="cobrarRep|${esc(p.id)}">Ya me pagó</button>`).join(" &nbsp; ")}</span></div>` : "")
       + `<div class="board">${COLS.map(([t, f]) => { const l = lista.filter(f).sort((a, b) => String(a.creado).localeCompare(b.creado)); return `<section class="col"><h3>${t} <b>${l.length}</b></h3>${l.map(tarjeta).join("") || `<p class="muted sm col-v">—</p>`}</section>`; }).join("")}</div>`
       : `<div class="peds">${lista.map(tarjeta).join("") || vacio("Sin pedidos ese día.")}</div>`);
   if (silencioso && $("#view").dataset.h === html) return; $("#view").innerHTML = html; $("#view").dataset.h = html;
   $("#hD")?.addEventListener("change", e => { HIST_D = e.target.value; VIEWS.pedidos(); });
   $("#view").onclick = e => { const t = e.target.closest("[data-pt]"); if (t) { PT = t.dataset.pt; return VIEWS.pedidos(); }
-    const b = e.target.closest("[data-pa]"); if (!b) return; const [a, id] = b.dataset.pa.split("|"), p = lista.find(x => x.id === id); if (p) accionPedido(a, p); };
+    const b = e.target.closest("[data-pa]"); if (!b) return; const [a, id] = b.dataset.pa.split("|"), p = lista.find(x => x.id === id) || PORCOB.find(x => x.id === id); if (p) accionPedido(a, p); };
 };
 function accionesPedido(p) {
   const B = (a, t, c = "btn-light") => `<button class="btn ${c} btn-sm" data-pa="${a}|${esc(p.id)}">${t}</button>`;
   if (p.entrega === "servicio") return { nuevo: B("aceptarS", `${ico("check")} Aceptar`, "btn-pri") + B("anular", "No puedo"), cocina: B("terminar", `${ico("check")} Terminado y cobrado`, "btn-pri") + B("anular", "Anular") }[p.estado] || "";
   return { "por-validar": B("validar", `${ico("check")} Ver captura y validar`, "btn-pri") + B("rechazar", "Rechazar"), nuevo: B("aceptar", `${ico("fire")} Aceptar`, "btn-pri") + B("anular", "Rechazar"),
     cocina: B("listo", `${ico("check")} Listo`, "btn-pri") + B("anular", "Anular"),
-    listo: (p.entrega === "delivery" ? B("salio", `${ico("bike")} Salió a entregar`, "btn-pri") : B("entregar", `${ico("check")} Recogido${p.pagado ? "" : " y cobrado"}`, "btn-pri")) + B("anular", "Anular"),
-    camino: B("entregar", `${ico("check")} Entregado${p.pagado ? "" : " y cobrado"}`, "btn-pri") }[p.estado] || "";
+    listo: (p.entrega !== "delivery" ? B("entregar", `${ico("check")} Recogido${p.pagado ? "" : " y cobrado"}`, "btn-pri") : p.repartidor ? B("alRep", `${ico("bike")} Entregar a ${esc(p.repartidor.nombre.split(" ")[0])}`, "btn-pri") : B("salio", `${ico("bike")} Lo llevo yo`)) + B("anular", "Anular"),
+    camino: p.repartidor ? (!p.pagado && p.pago === "Efectivo" ? B("cobrarRep", `${ico("cash")} Cobré la comida al repartidor`) : "") : B("entregar", `${ico("check")} Entregado${p.pagado ? "" : " y cobrado"}`, "btn-pri") }[p.estado] || "";
 }
+// Repartidor del pedido: quién lo lleva o si se está buscando uno
+function lineaRep(p) {
+  if (p.entrega !== "delivery" || ["por-validar", "nuevo"].includes(p.estado)) return "";
+  const r = p.repartidor, X = (a, t) => `<button class="btn btn-light btn-xs" data-pa="${a}|${esc(p.id)}">${t}</button>`;
+  if (r) return `<p class="rep-l">${vehTxt(r.vehiculo)} <b>${esc(r.nombre)}</b>${r.placa ? " · " + esc(r.placa) : ""} · <a href="tel:${esc(r.celular)}">📞 ${esc(r.celular)}</a>${p.estado !== "camino" ? ` <span class="st info">va a tu local</span> ${X("quitarRep", "Quitar")}` : ""}</p>`;
+  if (p.oferta) return `<p class="rep-l busca">🔎 Buscando repartidor${p.vehiculo === "carro" ? " con <b>carro</b>" : p.vehiculo === "moto" ? " con <b>moto</b>" : ""}… ${X("reavisar", "Volver a avisar")}</p>`;
+  return `<p class="rep-l">${X("pedirRep", "🛵 Pedir repartidor")}</p>`;
+}
+// Ferretería y Talleres: el negocio elige el tamaño del envío
+const campoTam = p => p.entrega === "delivery" && envioGrande(NEG.rubro) ? `<span class="lbl">Tamaño del envío</span><div class="radios">${[["carro", "🚗 Grande · va en carro"], ["moto", "🛵 Pequeño · va solo en moto"]].map(([v, t], i) => `<label class="rd"><input type="radio" name="tam" value="${v}" ${i ? "" : "checked"}><span>${t}</span></label>`).join("")}</div>` : "";
+// Aviso a los repartidores de la ciudad (solo ven negocio, zona y distancia; NO los datos del cliente)
+function opOferta(p, veh, tiempo, n = NEG) {
+  const z = p.destino ? ciudadCercana(p.destino) : null;
+  return [{ op: "set", col: "ofertas", id: p.id, merge: false, data: { codigo: p.codigo, negocioId: n.id, prov: n.prov, negocio: { nombre: n.nombre, direccion: n.direccion || "", ubic: n.ubic || null, telefono: n.telefono || "" },
+      zona: z ? z.dis : "", km: p.km ?? null, envio: +p.envio || 0, pago: p.pago, vehiculo: veh || "todos", tiempo: tiempo || p.tiempo || null, estado: "libre", creado: new Date().toISOString(), dia: HOY() } },
+    { op: "set", col: "pedidos", id: p.id, data: { oferta: true, vehiculo: veh || "todos" } }];
+}
+const cerrarOferta = p => p.oferta ? [{ op: "set", col: "ofertas", id: p.id, data: { estado: "cerrada" } }] : [];
 const msgCli = (p, t) => `Hola ${String(p.cliente.nombre || "").split(" ")[0]} 👋 te escribe *${NEG.nombre}* por tu pedido de Apamuy.\n\n${t}\n\nSigue tu pedido aquí: ${AP.web}/pedido.html?c=${encodeURIComponent(p.codigo)}`;
 function movimiento(m) { return { op: "set", col: `negocios/${NEG.id}/movimientos`, id: codigo("MV"), data: { fecha: HOY(), hora: new Date().toISOString(), ...m, monto: r2(m.monto) } }; }
 async function accionPedido(a, p) {
@@ -226,23 +247,36 @@ async function accionPedido(a, p) {
   if (a === "comanda") return comanda(p);
   if (a === "wa") return abrirWA(p.cliente.celular, msgCli(p, "Te escribimos sobre tu pedido."));
   if (a === "validar") return modal(`Validar pago · ${p.codigo}`, `${p.captura ? `<img class="zoom" src="${esc(p.captura)}" alt="Captura del pago">` : `<p class="muted">Sin captura.</p>`}<p>Confirma que te llegaron <b>${S(p.subtotal)}</b> por ${esc(p.pago)}${p.operacion ? ` (op. ${esc(p.operacion)})` : ""}.</p>
-    <div class="g2">${fld("tiempo", "Listo en (min)", 25, { opts: [15, 20, 25, 30, 40, 50] })}${fld("enviar", "Avisar al cliente por WhatsApp", false, { type: "checkbox" })}</div>`, async d =>
-    fin([upd({ estado: "cocina", pagado: p.subtotal, tiempo: +d.tiempo, validado: new Date().toISOString() }), movimiento({ concepto: `Pedido ${p.codigo} · ${p.cliente.nombre}`, monto: p.subtotal, metodo: p.pago, pedido: p.id })], "Pago validado · a preparar", d.enviar ? msgCli(p, `✅ Recibimos tu pago. Ya estamos preparando tu pedido 🔥 (aprox. ${d.tiempo} min).`) : null), "Validar y preparar");
+    <div class="g2">${fld("tiempo", "Listo en (min)", 25, { opts: [15, 20, 25, 30, 40, 50] })}${fld("enviar", "Avisar al cliente por WhatsApp", false, { type: "checkbox" })}</div>${campoTam(p)}`, async d =>
+    fin([upd({ estado: "cocina", pagado: p.subtotal, tiempo: +d.tiempo, validado: new Date().toISOString() }), movimiento({ concepto: `Pedido ${p.codigo} · ${p.cliente.nombre}`, monto: p.subtotal, metodo: p.pago, pedido: p.id }), ...(p.entrega === "delivery" ? opOferta(p, d.tam, +d.tiempo) : [])],
+      p.entrega === "delivery" ? "Pago validado · avisamos a los repartidores 🛵" : "Pago validado · a preparar", d.enviar ? msgCli(p, `✅ Recibimos tu pago. Ya estamos preparando tu pedido 🔥 (aprox. ${d.tiempo} min).`) : null), "Validar y preparar");
   if (a === "rechazar") return modal("Rechazar pago", fld("motivo", "Motivo", "No llegó el pago", { full: true, opts: ["No llegó el pago", "El monto no coincide", "La captura no se lee", "La captura es de otro pago"] }), async d => fin([upd({ estado: "rechazado", motivo: d.motivo })], "Pedido rechazado"), "Rechazar");
-  if (a === "aceptar") return modal(`Aceptar · ${p.codigo}`, `<p>¿En cuántos minutos estará listo? El cliente lo ve en su seguimiento.</p><div class="tiempos">${[15, 20, 25, 30, 40, 50].map(t => `<label class="rd"><input type="radio" name="tiempo" value="${t}" ${t === 25 ? "checked" : ""}><span>${t} min</span></label>`).join("")}</div>${fld("imprimir", "Imprimir comanda para cocina", true, { type: "checkbox" })}`,
-    async d => { if (d.imprimir) comanda(p); await fin([upd({ estado: "cocina", tiempo: +d.tiempo, aceptado: new Date().toISOString() })], "Pedido aceptado 🔥"); }, "Aceptar pedido");
+  if (a === "aceptar") return modal(`Aceptar · ${p.codigo}`, `<p>¿En cuántos minutos estará listo? El cliente lo ve en su seguimiento.</p><div class="tiempos">${[15, 20, 25, 30, 40, 50].map(t => `<label class="rd"><input type="radio" name="tiempo" value="${t}" ${t === 25 ? "checked" : ""}><span>${t} min</span></label>`).join("")}</div>${campoTam(p)}${fld("imprimir", "Imprimir comanda para cocina", true, { type: "checkbox" })}${p.entrega === "delivery" ? `<p class="muted sm">🛵 Al aceptar avisamos a los repartidores de tu ciudad. El primero que acepte viene a tu local.</p>` : ""}`,
+    async d => { if (d.imprimir) comanda(p); await fin([upd({ estado: "cocina", tiempo: +d.tiempo, aceptado: new Date().toISOString() }), ...(p.entrega === "delivery" ? opOferta(p, d.tam, +d.tiempo) : [])], p.entrega === "delivery" ? "Pedido aceptado 🔥 · buscando repartidor" : "Pedido aceptado 🔥"); }, "Aceptar pedido");
   if (a === "aceptarS") { await fin([upd({ estado: "cocina", aceptado: new Date().toISOString() })], "Solicitud aceptada"); return modal("Llama al cliente", `<p>Coordina el servicio con <b>${esc(p.cliente.nombre)}</b>.</p><a class="btn btn-pri btn-lg" href="tel:${esc(p.cliente.celular)}">📞 Llamar al ${esc(p.cliente.celular)}</a>`, null); }
   if (a === "terminar") return modal(`Terminar · ${p.codigo}`, `${fld("monto", "¿Cuánto cobraste? (S/)", p.subtotal, { type: "number", req: true, extra: 'min="0" step="0.1"' })}${fld("metodo", "Método", "Efectivo", { opts: METODOS })}`, async d =>
     fin([upd({ estado: "entregado", pagado: +d.monto, montoFinal: +d.monto, pagoReal: d.metodo, entregado: new Date().toISOString() }), movimiento({ concepto: `Servicio ${p.codigo} · ${p.cliente.nombre}`, monto: +d.monto, metodo: d.metodo, pedido: p.id })], "Servicio terminado"), "Terminado");
   if (a === "listo") return fin([upd({ estado: "listo", listo: new Date().toISOString() })], p.entrega === "delivery" ? "Listo · esperando al repartidor" : "Listo para recoger");
-  if (a === "salio") return fin([upd({ estado: "camino", despachado: new Date().toISOString() })], "Pedido en camino 🛵");
+  if (a === "salio") return fin([upd({ estado: "camino", despachado: new Date().toISOString() }), ...cerrarOferta(p)], "Pedido en camino 🛵");
+  if (a === "pedirRep") { const go = async veh => fin(opOferta(p, veh), "Avisamos a los repartidores 🛵"); return campoTam(p) ? modal("Pedir repartidor", campoTam(p), d => go(d.tam), "Avisar") : go("todos"); }
+  if (a === "reavisar") return fin([{ op: "set", col: "ofertas", id: p.id, data: { estado: "libre", tomadoPor: null, creado: new Date().toISOString() } }], "Volvimos a avisar a los repartidores");
+  if (a === "quitarRep") return modal("Quitar repartidor", `<p>¿<b>${esc(p.repartidor.nombre)}</b> no llegó? El pedido vuelve a la lista para que lo tome otro repartidor.</p>`, async () =>
+    fin([upd({ repUid: null, repartidor: null }), { op: "set", col: "ofertas", id: p.id, data: { estado: "libre", tomadoPor: null, creado: new Date().toISOString() } }], "Buscando otro repartidor"), "Quitar");
+  if (a === "alRep" || a === "cobrarRep") {
+    const sale = a === "alRep" ? [upd({ estado: "camino", despachado: new Date().toISOString(), repartidor: { etapa: "camino", recogido: new Date().toISOString() } })] : [];
+    if (p.pagado || p.pago !== "Efectivo") return fin(sale, `Pedido en camino con ${p.repartidor.nombre.split(" ")[0]} 🛵`);
+    return modal(a === "alRep" ? `Entregar a ${p.repartidor.nombre.split(" ")[0]}` : "Cobrar la comida", `<p>El cliente paga en efectivo: <b>${esc(p.repartidor.nombre)}</b> le cobra ${S(p.total)}. La comida (<b>${S(p.subtotal)}</b>) es tuya.</p>
+      ${fld("metodo", "¿Cómo te pagó la comida el repartidor?", "Efectivo", { opts: [...METODOS, ["despues", "Me paga después"]] })}`, async d => {
+      if (d.metodo === "despues") return fin(sale, "Listo · queda pendiente de cobro");
+      await fin([...sale, { ...upd({ pagado: p.subtotal, pagoReal: d.metodo, cobradoRep: new Date().toISOString() }) }, movimiento({ concepto: `Pedido ${p.codigo} · cobrado a ${p.repartidor.nombre}`, monto: p.subtotal, metodo: d.metodo, pedido: p.id })], "Comida cobrada");
+      PORCOB = PORCOB.filter(x => x.id !== p.id); VIEWS.pedidos(); }, a === "alRep" ? "Entregar" : "Cobrado"); }
   if (a === "entregar") {
-    if (p.pagado) return fin([upd({ estado: "entregado", entregado: new Date().toISOString() })], "Pedido entregado");
+    if (p.pagado) return fin([upd({ estado: "entregado", entregado: new Date().toISOString() }), ...cerrarOferta(p)], "Pedido entregado");
     return modal(`Cobrar · ${p.codigo}`, `<p>Comida: <b>${S(p.subtotal)}</b>${p.envio ? ` · el delivery (${S(p.envio)}) es para quien lo llevó` : ""}.</p>${fld("metodo", "¿Cómo pagó la comida?", METODOS.includes(p.pago) ? p.pago : "Efectivo", { opts: METODOS })}`, async d =>
-      fin([upd({ estado: "entregado", pagado: p.subtotal, pagoReal: d.metodo, entregado: new Date().toISOString() }), movimiento({ concepto: `Pedido ${p.codigo} · ${p.cliente.nombre}`, monto: p.subtotal, metodo: d.metodo, pedido: p.id })], "Entregado y cobrado"), "Entregado");
+      fin([upd({ estado: "entregado", pagado: p.subtotal, pagoReal: d.metodo, entregado: new Date().toISOString() }), ...cerrarOferta(p), movimiento({ concepto: `Pedido ${p.codigo} · ${p.cliente.nombre}`, monto: p.subtotal, metodo: d.metodo, pedido: p.id })], "Entregado y cobrado"), "Entregado");
   }
   if (a === "anular") return modal(`Anular ${p.codigo}`, `${fld("motivo", "Motivo (lo ve el cliente)", "", { full: true, req: true, ph: "Ej. se nos acabó el pollo" })}${p.pagado ? `<div class="alert warn sm">${ico("cash")} <span>Ya te pagó ${S(p.pagado)}: devuélvele el dinero por ${esc(p.pago)}.</span></div>` : ""}`, async d =>
-    fin([upd({ estado: "anulado", motivo: d.motivo }), ...(p.pagado ? [movimiento({ concepto: `Devolución ${p.codigo}`, monto: -p.pagado, metodo: p.pago, pedido: p.id })] : [])], "Pedido anulado", msgCli(p, `Lo sentimos, tuvimos que anular tu pedido: ${d.motivo}.`)), "Anular pedido");
+    fin([upd({ estado: "anulado", motivo: d.motivo }), ...cerrarOferta(p), ...(p.pagado ? [movimiento({ concepto: `Devolución ${p.codigo}`, monto: -p.pagado, metodo: p.pago, pedido: p.id })] : [])], "Pedido anulado", msgCli(p, `Lo sentimos, tuvimos que anular tu pedido: ${d.motivo}.`)), "Anular pedido");
 }
 // Comanda de cocina en PDF de 80 mm
 async function comanda(p) {
@@ -341,16 +375,20 @@ VIEWS.comision = async () => {
 VIEWS.negocio = async () => { $("#view").innerHTML = topBar("Mi negocio", "Estos datos se ven en la app. " + estN(NEG.estado)) + `<div id="negF"></div>`; formNegocio($("#negF"), NEG); };
 
 /* ================= ADMIN · avisos ================= */
-function vigilarAdm() { DB.escucharLista("negocios", [["estado", "==", "pendiente"]], l => { const b = $("#cnt-negocios"); if (b) { b.textContent = l.length; b.hidden = !l.length; } }); }
+function vigilarAdm() {
+  const cnt = k => l => { const b = $("#cnt-" + k); if (b) { b.textContent = l.length; b.hidden = !l.length; } };
+  DB.escucharLista("negocios", [["estado", "==", "pendiente"]], cnt("negocios")); DB.escucharLista("repartidores", [["estado", "==", "pendiente"]], cnt("repartidores")); DB.escucharLista("pagosRep", [["estado", "==", "pendiente"]], cnt("cobrosRep"));
+}
 
 /* ================= ADMIN · RESUMEN ================= */
 VIEWS.resumen = async () => {
-  const [ns, hoy, mes] = await Promise.all([DB.list("negocios"), DB.list("pedidos", ["dia", "==", HOY()]), DB.list("pedidos", ["mes", "==", HOY().slice(0, 7)])]);
+  const [ns, hoy, mes, rs] = await Promise.all([DB.list("negocios"), DB.list("pedidos", ["dia", "==", HOY()]), DB.list("pedidos", ["mes", "==", HOY().slice(0, 7)]), DB.list("repartidores").catch(() => [])]);
   const ent = l => l.filter(p => p.estado === "entregado"), com = l => ent(l).reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0) * pctDe(ns.find(n => n.id === p.negocioId)) / 100, 0);
   const pend = ns.filter(n => n.estado === "pendiente");
   $("#view").innerHTML = topBar("Resumen de Apamuy", "Todo lo que pasa en la plataforma.") + `
     <div class="kpis neon"><div class="kpi"><span>Negocios activos</span><b>${ns.filter(n => n.estado === "activo").length}</b><small>${pend.length} por revisar</small></div><div class="kpi"><span>Pedidos de hoy</span><b>${hoy.length}</b><small>${ent(hoy).length} entregados</small></div>
-      <div class="kpi"><span>Ventas de hoy</span><b>${S(ent(hoy).reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0))}</b><small>comida entregada</small></div><div class="kpi"><span>Tu comisión hoy</span><b>${S(com(hoy))}</b></div><div class="kpi"><span>Tu comisión del mes</span><b>${S(com(mes))}</b><small>${ent(mes).length} pedidos</small></div></div>
+      <div class="kpi"><span>Ventas de hoy</span><b>${S(ent(hoy).reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0))}</b><small>comida entregada</small></div><div class="kpi"><span>Tu comisión hoy</span><b>${S(com(hoy))}</b></div><div class="kpi"><span>Tu comisión del mes</span><b>${S(com(mes))}</b><small>${ent(mes).length} pedidos</small></div>
+      <div class="kpi"><span>Repartidores</span><b>${rs.filter(r => r.estado === "activo").length}</b><small>${rs.filter(r => r.estado === "activo" && r.disponible).length} disponibles ahora · ${rs.filter(r => r.estado === "pendiente").length} por revisar</small></div></div>
     <section class="card"><div class="card-h"><h2>${ico("clock")} Negocios por revisar</h2><button class="btn btn-light btn-sm" data-go="negocios">Ver todos</button></div>
       <ul class="lst">${pend.map(n => `<li><div><b>${esc(n.nombre)}</b><small>${esc(n.tipo)} · ${esc(n.email || "")} · ${hace(n.creado)}</small></div><button class="btn btn-pri btn-sm" data-rev="${esc(n.id)}">Revisar</button></li>`).join("") || `<li class="muted">No hay negocios esperando. 👍</li>`}</ul></section>`;
   $("#view").onclick = e => { const b = e.target.closest("[data-rev]"); if (b) verNegocio(ns.find(n => n.id === b.dataset.rev)); };
@@ -386,12 +424,14 @@ let PA_D = null;
 VIEWS.pedidosAdm = async () => {
   PA_D = PA_D || HOY(); const [l, ns] = await Promise.all([DB.list("pedidos", ["dia", "==", PA_D]), DB.list("negocios")]); l.sort((a, b) => String(b.creado).localeCompare(a.creado));
   $("#view").innerHTML = topBar("Pedidos de toda la plataforma", "Solo lectura: cada negocio atiende los suyos.", `<input type="date" class="q" id="pd" value="${PA_D}">`) + `
-    <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Hora</th><th>Código</th><th>Negocio</th><th>Cliente</th><th>Entrega</th><th>Pago</th><th class="r">Comida</th><th>Estado</th></tr></thead><tbody>
-    ${l.map(p => `<tr><td>${fmtH(p.creado)}</td><td class="mono">${esc(p.codigo)}</td><td>${esc(p.negocio.nombre)}</td><td>${esc(p.cliente.nombre)}<small>${esc(p.cliente.celular)}</small></td><td>${p.entrega === "delivery" ? `🛵 ${p.km} km` : "🏪"}</td><td>${esc(p.pago)}</td><td class="r">${S(p.subtotal)}</td><td>${estP(p.estado, p)}${String(p.negocioId).startsWith("demo-") && !["entregado", "anulado", "rechazado"].includes(p.estado) ? ` <button class="btn btn-light btn-xs" data-at="${esc(p.id)}">Atender</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Sin pedidos ese día.</td></tr>`}</tbody></table></div>
+    <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Hora</th><th>Código</th><th>Negocio</th><th>Cliente</th><th>Entrega</th><th>Repartidor</th><th>Pago</th><th class="r">Comida</th><th>Estado</th></tr></thead><tbody>
+    ${l.map(p => `<tr><td>${fmtH(p.creado)}</td><td class="mono">${esc(p.codigo)}</td><td>${esc(p.negocio.nombre)}</td><td>${esc(p.cliente.nombre)}<small>${esc(p.cliente.celular)}</small></td><td>${p.entrega === "delivery" ? `🛵 ${p.km} km` : "🏪"}</td><td>${p.repartidor ? `${vehTxt(p.repartidor.vehiculo).split(" ")[0]} ${esc(p.repartidor.nombre)}` : p.oferta && p.estado !== "entregado" ? `<span class="st warn">Buscando</span>` : "—"}</td><td>${esc(p.pago)}</td><td class="r">${S(p.subtotal)}</td><td>${estP(p.estado, p)}${String(p.negocioId).startsWith("demo-") && !["entregado", "anulado", "rechazado"].includes(p.estado) ? ` <button class="btn btn-light btn-xs" data-at="${esc(p.id)}">Atender</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">Sin pedidos ese día.</td></tr>`}</tbody></table></div>
     <p class="muted sm">Los pedidos a <b>tiendas de ejemplo</b> los puedes avanzar tú con «Atender» para probar el seguimiento del cliente.</p></section>`;
   $("#view").onclick = e => { const b = e.target.closest("[data-at]"); if (!b) return; const p = l.find(x => x.id === b.dataset.at);
     modal(`Tienda de ejemplo · ${p.codigo}`, fld("estado", "Nuevo estado", p.estado, { opts: [["nuevo", "Recibido"], ["cocina", "Preparando"], ["listo", "Listo"], ["camino", "En camino"], ["entregado", "Entregado"], ["anulado", "Anulado"]] }),
-      async d => { await DB.set("pedidos", p.id, { estado: d.estado, ...(d.estado === "cocina" ? { tiempo: 25 } : {}), actualizado: new Date().toISOString() }); toast("Estado cambiado"); VIEWS.pedidosAdm(); }, "Guardar"); };
+      async d => { const n = ns.find(x => x.id === p.negocioId) || {};
+        const extra = d.estado === "cocina" && p.entrega === "delivery" && !p.oferta ? opOferta(p, "todos", 25, n) : ["entregado", "anulado"].includes(d.estado) ? cerrarOferta(p) : [];
+        await DB.batch([{ op: "set", col: "pedidos", id: p.id, data: { estado: d.estado, ...(d.estado === "cocina" ? { tiempo: 25 } : {}), actualizado: new Date().toISOString() } }, ...extra]); toast(extra.length > 1 ? "Estado cambiado · avisamos a los repartidores" : "Estado cambiado"); VIEWS.pedidosAdm(); }, "Guardar"); };
   $("#pd").onchange = e => { PA_D = e.target.value; VIEWS.pedidosAdm(); };
 };
 
@@ -427,12 +467,17 @@ VIEWS.config = async () => {
       <div class="fld"><span>Ejemplo</span><b id="ej"></b></div></div>
     <h2>${ico("pin")} Ciudad</h2><p class="muted sm">Punto donde empiezan los mapas.</p><div class="mapa" id="cMapa"></div>
     <h2>${ico("store")} Tipos de negocio</h2>${fld("tipos", "Uno por línea", c.tipos.join("\n"), { type: "textarea", full: true, rows: 6 })}
+    <h2>${ico("bike")} Repartidores</h2><div class="g2">${fld("repCom", "Lo que paga el repartidor (% de su ganancia del día)", c.rep.comision, { type: "number", extra: 'min="0" max="50" step="0.5"' })}${fld("casaca", "Precio de la casaca (S/)", c.rep.casaca, { type: "number", extra: 'min="0" step="1"', help: "La inscripción es gratis: solo pagan la casaca." })}</div>
+    <h2>${ico("qr")} Tu Yape (aquí te pagan repartidores)</h2><div class="g2">${fld("cYape", "Número de Yape", c.cobro.yape || "")}${fld("cTit", "A nombre de", c.cobro.titular || "")}
+      <div class="fld full"><span>QR de Yape</span><div class="foto-up"><span class="fp-yapeQR" id="cQrV" style="background-image:url('${esc(imgUrl(c.cobro.qr))}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir QR<input type="file" accept="image/*" id="cQr" hidden></label></div></div></div>
     <h2>${ico("wa")} Soporte</h2>${fld("soporte", "WhatsApp de soporte de Apamuy", c.soporte || "")}
     <div class="f-end"><button class="btn btn-pri">${ico("check")} Guardar</button></div></form>`;
   const F = $("#cF"), ej = () => { const x = { base: +F.base.value || 0, porKm: +F.porKm.value || 0, maxKm: +F.maxKm.value || 1 }; $("#ej").textContent = `1 km: ${S(costoDelivery(1, x))} · 3 km: ${S(costoDelivery(3, x))} · 5 km: ${S(costoDelivery(5, x))}`; };
-  F.oninput = ej; ej(); mapaPin($("#cMapa"), pos, q => pos = q);
+  F.oninput = ej; ej(); mapaPin($("#cMapa"), pos, q => pos = q); let QR = c.cobro.qr || "";
+  $("#cQr").onchange = async e => { const f = e.target.files[0]; if (!f) return; QR = await redimensionar(f, 600, .9, "image/png"); $("#cQrV").style.backgroundImage = `url('${QR}')`; };
   F.onsubmit = async e => { e.preventDefault(); const v = datosForm(F);
-    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 8 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, "") });
+    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 8 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""),
+      rep: { comision: +v.repCom || 0, casaca: +v.casaca || 0 }, cobro: { yape: v.cYape, titular: v.cTit, qr: await subirFoto(`web/cobro/yape-${Date.now().toString(36)}.png`, QR) } });
     await cargarConfig(); toast("Configuración guardada"); };
 };
 
@@ -476,7 +521,7 @@ VIEWS.rubros = async () => {
   await cargarRubros(true); const ns = await DB.list("negocios");
   $("#view").innerHTML = topBar("Rubros", "Las categorías grandes de Apamuy, con su imagen. Agrega las que quieras para que la plataforma crezca.", `<button class="btn btn-pri btn-sm" id="nR">${ico("plus")} Rubro</button>`) + `
     <section class="card"><div class="rb-grid">${RUBROS.map((r, i) => `<div class="rb-c ${r.activo === false ? "off" : ""}"><span class="rb-i" style="background:${esc(r.color || "#FFF1E6")}">${r.imagen ? `<img src="${esc(imgUrl(r.imagen))}" alt="">` : ""}</span>
-      <div><b>${esc(r.nombre)}</b><small>${r.modo === "servicios" ? "🔧 Servicios" : "🛍️ Productos"}${r.mayorEdad ? " · 🔞 +18" : ""}${r.requiereRegistro ? " · 📄 registro" : ""} · ${ns.filter(n => (n.rubro || "comida") === r.id).length} negocio(s)${r.activo === false ? " · oculto" : ""}</small></div>
+      <div><b>${esc(r.nombre)}</b><small>${r.modo === "servicios" ? "🔧 Servicios" : "🛍️ Productos"}${r.mayorEdad ? " · 🔞 +18" : ""}${envioGrande(r.id) ? " · 🚗 envío grande" : ""}${r.requiereRegistro ? " · 📄 registro" : ""} · ${ns.filter(n => (n.rubro || "comida") === r.id).length} negocio(s)${r.activo === false ? " · oculto" : ""}</small></div>
       <div class="rb-a"><button class="btn btn-light btn-xs" data-up="${i}" ${i ? "" : "disabled"} aria-label="Subir">▲</button><button class="btn btn-light btn-xs" data-dn="${i}" ${i < RUBROS.length - 1 ? "" : "disabled"} aria-label="Bajar">▼</button><button class="btn btn-light btn-sm" data-er="${esc(r.id)}">${ico("edit")}</button></div></div>`).join("")
       || vacio("Aún no hay rubros. Ve a «Página web» → Cargar ejemplos, o crea el primero.")}</div></section>`;
   const form = r => { let IMG = r?.imagen || "";
@@ -484,11 +529,11 @@ VIEWS.rubros = async () => {
       ${fld("nombre", "Nombre", r?.nombre || "", { req: true, ph: "Ej. Mascotas" })}${fld("color", "Color de fondo", r?.color || "#FFF1E6", { type: "color" })}
       ${fld("modo", "¿Qué ofrecen?", r?.modo || "productos", { opts: [["productos", "Productos (se piden y se entregan)"], ["servicios", "Servicios (el cliente solicita y el negocio lo llama)"]] })}
       ${fld("tipos", "Tipos de negocio (uno por línea)", (r?.tipos || []).join("\n"), { type: "textarea", rows: 4, full: true })}
-      ${fld("mayorEdad", "Solo mayores de 18 (licor, cigarros…)", !!r?.mayorEdad, { type: "checkbox" })}${fld("activo", "Visible en la web", r ? r.activo !== false : true, { type: "checkbox" })}
+      ${fld("mayorEdad", "Solo mayores de 18 (licor, cigarros…)", !!r?.mayorEdad, { type: "checkbox" })}${fld("envioGrande", "Envío grande: va en carro (si el pedido es pequeño, solo en moto)", r ? envioGrande(r.id) : false, { type: "checkbox" })}${fld("activo", "Visible en la web", r ? r.activo !== false : true, { type: "checkbox" })}
       ${fld("requiereRegistro", "Registro que debe dar el negocio (vacío = ninguno)", r?.requiereRegistro || "", { full: true, ph: "Ej. N° de registro DIGEMID" })}${fld("aviso", "Aviso para los clientes (vacío = ninguno)", r?.aviso || "", { full: true })}</div>`, async d => {
       const id = r?.id || slug(d.nombre) || "rubro-" + Date.now().toString(36); if (!r && RUBROS.find(x => x.id === id)) { toast("Ya existe un rubro con ese nombre", true); return false; }
       const imagen = await subirFoto(`web/rubros/${id}-${Date.now().toString(36)}.png`, IMG);
-      await DB.set("rubros", id, { nombre: d.nombre, color: d.color, modo: d.modo, tipos: d.tipos.split("\n").map(x => x.trim()).filter(Boolean), mayorEdad: d.mayorEdad, activo: d.activo, requiereRegistro: d.requiereRegistro, aviso: d.aviso, imagen, orden: r?.orden ?? RUBROS.length });
+      await DB.set("rubros", id, { nombre: d.nombre, color: d.color, modo: d.modo, tipos: d.tipos.split("\n").map(x => x.trim()).filter(Boolean), mayorEdad: d.mayorEdad, envioGrande: d.envioGrande, activo: d.activo, requiereRegistro: d.requiereRegistro, aviso: d.aviso, imagen, orden: r?.orden ?? RUBROS.length });
       toast("Rubro guardado · ya se ve en la web"); VIEWS.rubros(); }, "Guardar", { wide: true, alAbrir: () => {
       $("#rFile").onchange = async e => { const f = e.target.files[0]; if (!f) return; IMG = await redimensionar(f, 300, .9, "image/png"); $("#rPrev").style.backgroundImage = `url('${IMG}')`; }; } }); };
   $("#nR").onclick = () => form();
@@ -520,4 +565,69 @@ VIEWS.banners = async () => {
       $("#bDel")?.addEventListener("click", async () => { if (!confirm("¿Eliminar este banner?")) return; await DB.del("banners", b.id); cerrarModal(); VIEWS.banners(); }); } }); };
   $("#nB").onclick = () => form();
   $("#view").onclick = e => { const x = e.target.closest("[data-eb]"); if (x) form(l.find(b => b.id === x.dataset.eb)); };
+};
+
+/* ================= ADMIN · REPARTIDORES ================= */
+const ESTADOS_R = { pendiente: ["Por revisar", "warn"], activo: ["Activo", "ok"], suspendido: ["Suspendido", "bad"], rechazado: ["Por corregir", "bad"] };
+const estR = e => { const [t, c] = ESTADOS_R[e] || [e, "mute"]; return `<span class="st ${c}">${t}</span>`; };
+const soatAl = r => !r.soatVence ? "" : r.soatVence < HOY() ? `<span class="st bad">SOAT vencido</span>` : r.soatVence < addD(HOY(), 15) ? `<span class="st warn">SOAT vence ${fmtF(r.soatVence)}</span>` : "";
+let RF = "pendiente";
+VIEWS.repartidores = async () => {
+  const rs = (await DB.list("repartidores")).sort((a, b) => String(b.creado).localeCompare(a.creado)), l = rs.filter(r => !RF || r.estado === RF);
+  $("#view").innerHTML = topBar("Repartidores", "Revisa sus documentos, apruébalos o suspéndelos.", `<a class="btn btn-light btn-sm" href="${esc(AP.reparto || "https://reparto.apamuy.app")}" target="_blank" rel="noopener">${ico("arrow")} App de repartidores</a>`)
+    + `<div class="chips">${[["pendiente", "Por revisar"], ["activo", "Activos"], ["suspendido", "Suspendidos"], ["rechazado", "Por corregir"], ["", "Todos"]].map(([k, t]) => `<button class="chip ${RF === k ? "on" : ""}" data-rf="${k}">${t} (${k ? rs.filter(r => r.estado === k).length : rs.length})</button>`).join("")}</div>
+    <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Repartidor</th><th>Vehículo</th><th>Ciudad</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${l.map(r => `<tr><td><b>${esc(r.nombre)}</b><small>DNI ${esc(r.dni)} · <a href="tel:${esc(r.celular)}">${esc(r.celular)}</a> · ${hace(r.creado)}</small></td><td>${vehTxt(r.vehiculo)}${r.placa ? `<small>${esc(r.placa)}</small>` : ""}${soatAl(r)}</td>
+      <td>${esc(r.provincia || "")}<small>${esc(r.departamento || "")}</small></td><td>${estR(r.estado)}${r.estado === "activo" ? (r.disponible ? ` <span class="st ok">🟢 Disponible</span>` : ` <span class="st mute">Desconectado</span>`) : ""}</td><td><button class="btn btn-light btn-sm" data-vr="${esc(r.id)}">Ver</button></td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">${RF === "pendiente" ? "No hay repartidores por revisar. 👍" : "Sin repartidores."}</td></tr>`}</tbody></table></div></section>`;
+  $("#view").onclick = e => { const f = e.target.closest("[data-rf]"); if (f) { RF = f.dataset.rf; return VIEWS.repartidores(); } const v = e.target.closest("[data-vr]"); if (v) verRepartidor(rs.find(r => r.id === v.dataset.vr)); };
+};
+async function verRepartidor(r) {
+  const m = HOY().slice(0, 7), [ps, pg] = await Promise.all([DB.list("pedidos", ["repUid", "==", r.id], ["mes", "==", m]).catch(() => []), DB.list("pagosRep", ["uid", "==", r.id]).catch(() => [])]);
+  const ent = ps.filter(p => p.estado === "entregado"), gan = ent.reduce((a, p) => a + (+p.envio || 0), 0), dom = r.domicilio || {}, cas = r.casaca || {};
+  const docs = [["foto", "Selfie"], ["dniFrente", "DNI adelante"], ["dniReverso", "DNI atrás"], ["licenciaFoto", "Licencia"], ["soatFoto", "SOAT"], ["vehiculoFoto", "Vehículo"], ["antecedentes", "Antecedentes"], ["firma", "Firma"]].filter(([k]) => r[k]);
+  modal(r.nombre, `<div class="docs">${docs.map(([k, t]) => `<a class="doc" data-doc="${k}" target="_blank" rel="noopener"><span class="doc-i">…</span><small>${t}</small></a>`).join("")}${cas.captura ? `<a class="doc" data-doc="casaca" target="_blank" rel="noopener"><span class="doc-i">…</span><small>Pago casaca</small></a>` : ""}</div>
+    <p class="muted sm">${ico("lock")} Solo tú ves estos documentos. Tócalos para verlos en grande. Compara la selfie con la foto del DNI.</p>
+    <dl class="dl"><dt>Estado</dt><dd>${estR(r.estado)}</dd><dt>DNI</dt><dd>${esc(r.dni)} · nació ${fmtF(r.nacimiento, { day: "numeric", month: "short", year: "numeric" })}</dd><dt>Celular</dt><dd>${esc(r.celular)} · <a href="${wa(r.celular)}" target="_blank" rel="noopener">WhatsApp</a></dd><dt>Correo</dt><dd>${esc(r.email || "")}</dd>
+      <dt>Vehículo</dt><dd>${vehTxt(r.vehiculo)}${r.placa ? ` · placa <b>${esc(r.placa)}</b> · licencia ${esc(r.licencia || "")}` : ""}</dd>${r.soatVence ? `<dt>SOAT</dt><dd>vence ${fmtF(r.soatVence, { day: "numeric", month: "short", year: "numeric" })} ${soatAl(r)}</dd>` : ""}
+      <dt>Trabaja en</dt><dd>${esc(r.provincia)} (${esc(r.departamento)})</dd><dt>Domicilio</dt><dd>${esc(dom.texto || "")}${dom.referencia ? " · " + esc(dom.referencia) : ""}${dom.distrito ? ", " + esc(dom.distrito) : ""}${dom.lat != null ? ` · <a href="https://maps.google.com/?q=${dom.lat},${dom.lng}" target="_blank" rel="noopener">Ver en mapa</a>` : ""}</dd>
+      <dt>Casaca</dt><dd>${S(cas.monto)} · talla ${esc(cas.talla || r.talla || "")} · op. ${esc(cas.operacion || "")}</dd><dt>Declaración</dt><dd>Firmada ${fmtFH((r.declaracion || {}).fecha)} · consentimiento de datos ${r.consentimiento ? "✅" : "❌"}</dd>
+      <dt>Este mes</dt><dd>${ent.length} entrega(s) · ganó ${S(gan)} · ${pg.filter(x => x.estado === "pendiente").length} pago(s) por revisar</dd></dl>
+    <div class="g2">${fld("estado", "Estado", r.estado, { opts: [["pendiente", "Por revisar"], ["activo", "Activo (puede repartir)"], ["rechazado", "Por corregir (le pedimos que corrija)"], ["suspendido", "Suspendido"]] })}
+      ${fld("motivo", "Motivo (lo ve el repartidor si lo rechazas o suspendes)", r.motivo || "", { full: true, ph: "Ej. La foto del DNI no se lee · No pagó su 10 % del lunes" })}</div>`, async d => {
+    if (["suspendido", "rechazado"].includes(d.estado) && !d.motivo) { toast("Escribe el motivo", true); return false; }
+    await DB.set("repartidores", r.id, { estado: d.estado, motivo: d.estado === "activo" ? "" : d.motivo, revisado: new Date().toISOString(), ...(d.estado !== "activo" ? { disponible: false } : {}), ...(d.estado === "activo" && !r.aprobado ? { aprobado: new Date().toISOString() } : {}) });
+    toast(d.estado === "activo" ? "✅ Repartidor activo: ya puede recibir pedidos" : "Guardado"); if (d.estado === "activo" && !r.aprobado) abrirWA(r.celular, `Hola ${r.nombre.split(" ")[0]} 👋 ¡Bienvenido a Apamuy! Ya aprobamos tu registro de repartidor. Coordinemos la entrega de tu casaca (talla ${cas.talla || r.talla}). Entra a ${AP.reparto || "https://reparto.apamuy.app"} y activa «Disponible» para recibir pedidos.`);
+    go(VISTA); }, "Guardar", { wide: true });
+  // Abre cada documento con un enlace temporal (las reglas solo dejan al admin)
+  $$("[data-doc]").forEach(async a => { const k = a.dataset.doc; try { const u = await verPrivado(k === "casaca" ? cas.captura : r[k]); a.href = u; const pdf = /\.pdf|application\/pdf/i.test(String(k === "casaca" ? cas.captura : r[k]));
+    $(".doc-i", a).outerHTML = pdf ? `<span class="doc-i">📄</span>` : `<img class="doc-i" src="${esc(u)}" alt="">`; } catch (e) { $(".doc-i", a).textContent = "⚠️"; } });
+}
+
+/* ================= ADMIN · COBROS A REPARTIDORES ================= */
+let CR_M = null;
+VIEWS.cobrosRep = async () => {
+  CR_M = CR_M || HOY().slice(0, 7);
+  const [pg, ps, rs] = await Promise.all([DB.list("pagosRep"), DB.list("pedidos", ["mes", "==", CR_M]), DB.list("repartidores")]), pct = +CONF.rep.comision || 0;
+  const pend = pg.filter(x => x.estado === "pendiente").sort((a, b) => String(a.creado).localeCompare(b.creado)), cub = {};
+  pg.filter(x => x.estado !== "rechazado").forEach(x => (x.dias || []).forEach(d => cub[x.uid + "|" + d] = x.estado));
+  const R = {}; ps.filter(p => p.estado === "entregado" && p.repUid).forEach(p => { const r = R[p.repUid] || (R[p.repUid] = { gan: 0, n: 0, dias: {} }); r.gan += +p.envio || 0; r.n++; r.dias[p.dia] = (r.dias[p.dia] || 0) + (+p.envio || 0); });
+  const filas = Object.entries(R).map(([uid, r]) => { const rep = rs.find(x => x.id === uid) || { id: uid, nombre: uid }, dias = Object.entries(r.dias);
+    const debe = dias.filter(([d]) => d < HOY() && !cub[uid + "|" + d]).reduce((a, [, g]) => a + g * pct / 100, 0), pagado = dias.filter(([d]) => cub[uid + "|" + d] === "aprobado").reduce((a, [, g]) => a + g * pct / 100, 0);
+    return { rep, ...r, com: r2(r.gan * pct / 100), debe: r2(debe), pagado: r2(pagado) }; }).sort((a, b) => b.debe - a.debe || b.gan - a.gan);
+  $("#view").innerHTML = topBar("Cobros a repartidores", `Cada repartidor te paga el ${pct}% de lo que gana cada día. Si no paga, su app se bloquea sola al día siguiente.`, `<input type="month" class="q" id="crm" value="${CR_M}">`) + `
+    <section class="card"><div class="card-h"><h2>${ico("clock")} Pagos por revisar</h2></div>${pend.length ? `<div class="pg-l">${pend.map(x => `<div class="pg"><a class="pg-c" data-cap="${esc(x.id)}" target="_blank" rel="noopener"><span class="doc-i">…</span></a><div><b>${S(x.monto)}</b> · ${esc(x.nombre || "")}<small>op. ${esc(x.operacion)} · ${fmtFH(x.creado)}</small><small>Días: ${(x.dias || []).map(d => fmtF(d)).join(", ")}</small></div>
+      <div class="acts-g"><button class="btn btn-pri btn-sm" data-ok="${esc(x.id)}">${ico("check")} Llegó</button><button class="btn btn-light btn-sm" data-no="${esc(x.id)}">No llegó</button></div></div>`).join("")}</div>
+      <div class="alert warn sm">${ico("alert")} <span>Antes de aprobar, <b>confirma en tu Yape que el dinero llegó</b>.</span></div>` : `<p class="muted">No hay pagos por revisar. 👍</p>`}</section>
+    <div class="kpis neon"><div class="kpi"><span>Ganaron los repartidores</span><b>${S(filas.reduce((a, f) => a + f.gan, 0))}</b><small>${filas.reduce((a, f) => a + f.n, 0)} entregas</small></div><div class="kpi"><span>Tu ${pct}% del mes</span><b>${S(filas.reduce((a, f) => a + f.com, 0))}</b></div><div class="kpi"><span>Ya te pagaron</span><b>${S(filas.reduce((a, f) => a + f.pagado, 0))}</b></div><div class="kpi"><span>Te deben (días pasados)</span><b>${S(filas.reduce((a, f) => a + f.debe, 0))}</b></div></div>
+    <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Repartidor</th><th>Entregas</th><th class="r">Ganó</th><th class="r">${pct}%</th><th class="r">Pagado</th><th class="r">Debe</th><th></th></tr></thead><tbody>
+    ${filas.map(f => `<tr><td><b>${esc(f.rep.nombre)}</b><small>${vehTxt(f.rep.vehiculo)} ${f.rep.estado ? estR(f.rep.estado) : ""}</small></td><td>${f.n}</td><td class="r">${S(f.gan)}</td><td class="r">${S(f.com)}</td><td class="r">${S(f.pagado)}</td><td class="r ${f.debe ? "neg" : ""}"><b>${S(f.debe)}</b></td>
+      <td>${f.debe && f.rep.celular ? `<button class="btn btn-wa btn-sm" data-cob="${esc(f.rep.id)}">${ico("wa")} Cobrar</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin entregas de repartidores ese mes.</td></tr>`}</tbody></table></div></section>`;
+  $("#crm").onchange = e => { CR_M = e.target.value; VIEWS.cobrosRep(); };
+  $$("[data-cap]").forEach(async a => { const x = pend.find(y => y.id === a.dataset.cap); try { const u = await verPrivado(x.captura); a.href = u; $(".doc-i", a).outerHTML = `<img class="doc-i" src="${esc(u)}" alt="Captura">`; } catch (e) { $(".doc-i", a).textContent = "⚠️"; } });
+  $("#view").onclick = e => { const ok = e.target.closest("[data-ok]"), no = e.target.closest("[data-no]"), cob = e.target.closest("[data-cob]");
+    if (ok) return DB.set("pagosRep", ok.dataset.ok, { estado: "aprobado", revisado: new Date().toISOString() }).then(() => { toast("✅ Pago aprobado"); VIEWS.cobrosRep(); });
+    if (no) return modal("El pago no llegó", fld("motivo", "Motivo (lo ve el repartidor)", "No llegó el Yape", { full: true, opts: ["No llegó el Yape", "El monto no coincide", "La captura no es válida"] }), async d => {
+      await DB.set("pagosRep", no.dataset.no, { estado: "rechazado", motivo: d.motivo, revisado: new Date().toISOString() }); toast("Pago rechazado · su app se bloquea hasta que pague"); VIEWS.cobrosRep(); }, "Rechazar");
+    if (cob) { const f = filas.find(x => x.rep.id === cob.dataset.cob); abrirWA(f.rep.celular, `Hola ${f.rep.nombre.split(" ")[0]} 👋 te escribe Apamuy. Tienes pendiente ${S(f.debe)} (${pct}% de tus repartos). Págalo desde tu app → Ganancias → Pagar, para que tu cuenta no se bloquee. ¡Gracias!`); } };
 };

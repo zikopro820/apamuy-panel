@@ -47,9 +47,50 @@ service cloud.firestore {
       match /movimientos/{id} { allow read: if (logueado() && request.auth.uid == nid) || admin(); allow write: if logueado() && request.auth.uid == nid; }
     }
 
-    // Pedidos: los ve el cliente que lo hizo, el negocio que lo recibe y el admin
+    // ---------- Repartidores ----------
+    function repDe(uid) { return get(/databases/$(database)/documents/repartidores/$(uid)).data; }
+    function repActivo() { return logueado() && exists(/databases/$(database)/documents/repartidores/$(request.auth.uid)) && repDe(request.auth.uid).estado == 'activo'; }
+
+    // Ficha del repartidor (DNI, domicilio…): solo él y el admin
+    match /repartidores/{uid} {
+      function yo() { return logueado() && request.auth.uid == uid; }
+      allow read: if yo() || admin();
+      allow create: if yo() && d().estado == 'pendiente' && d().consentimiento == true
+        && !('aprobado' in d()) && !('motivo' in d()) && !('revisado' in d());
+      // Él edita sus datos (disponible, ubicación, SOAT) pero NO su estado. Si lo rechazaron, puede reenviar para revisión.
+      allow update: if (yo() && !cambia(['estado', 'aprobado', 'motivo', 'revisado', 'email']))
+                    || (yo() && resource.data.estado == 'rechazado' && d().estado == 'pendiente' && !cambia(['aprobado', 'revisado', 'email']))
+                    || (admin() && soloCambia(['estado', 'motivo', 'revisado', 'aprobado', 'disponible']));
+      allow delete: if admin();
+    }
+
+    // Ofertas: lo que ven TODOS los repartidores de la ciudad (negocio, zona, distancia, cuánto ganan). Sin datos del cliente.
+    match /ofertas/{oid} {
+      function delNegocio() { return logueado() && (resource.data.negocioId == request.auth.uid || (admin() && resource.data.negocioId.matches('demo-.*'))); }
+      allow read: if logueado() && (resource.data.negocioId == request.auth.uid || admin() || (repActivo() && repDe(request.auth.uid).prov == resource.data.prov));
+      allow create: if logueado() && d().codigo == oid && d().estado == 'libre'
+        && (d().negocioId == request.auth.uid || (admin() && d().negocioId.matches('demo-.*')));
+      allow update: if (delNegocio() && d().negocioId == resource.data.negocioId)
+        // Tomarla: solo si está libre, el repartidor está activo y tiene el vehículo correcto
+        || (repActivo() && resource.data.estado == 'libre' && d().estado == 'tomado' && d().tomadoPor == request.auth.uid
+            && soloCambia(['estado', 'tomadoPor', 'tomado'])
+            && (resource.data.vehiculo == 'todos' || resource.data.vehiculo == repDe(request.auth.uid).vehiculo))
+        // Soltarla (no puede llevarla)
+        || (logueado() && resource.data.get('tomadoPor', null) == request.auth.uid && d().estado == 'libre' && d().tomadoPor == null && soloCambia(['estado', 'tomadoPor', 'soltadoPor']));
+      allow delete: if false;
+    }
+
+    // Pagos del % que hace el repartidor a Apamuy
+    match /pagosRep/{id} {
+      allow read: if logueado() && (resource.data.uid == request.auth.uid || admin());
+      allow create: if logueado() && d().uid == request.auth.uid && d().estado == 'pendiente' && d().monto is number && d().dias is list && d().dias.size() <= 62;
+      allow update: if admin() && soloCambia(['estado', 'motivo', 'revisado']);
+      allow delete: if false;
+    }
+
+    // Pedidos: los ve el cliente que lo hizo, el negocio que lo recibe, su repartidor y el admin
     match /pedidos/{pid} {
-      allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || resource.data.negocioId == request.auth.uid || admin());
+      allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || resource.data.negocioId == request.auth.uid || admin() || resource.data.repUid == request.auth.uid);
       allow create: if logueado() && d().clienteUid == request.auth.uid && d().codigo == pid
         && get(/databases/$(database)/documents/negocios/$(d().negocioId)).data.estado == 'activo'
         && d().keys().hasOnly(['codigo', 'negocioId', 'negocio', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'km', 'total', 'entrega', 'destino', 'nota',
@@ -59,8 +100,18 @@ service cloud.firestore {
         && d().items is list && d().items.size() > 0 && d().items.size() <= 60
         && d().subtotal is number && (d().subtotal > 0 || d().entrega == 'servicio') && d().total is number && d().total >= d().subtotal && d().total < 10000;
       // Solo el negocio avanza los estados; no puede cambiar lo que pidió el cliente ni los montos
-      allow update: if logueado() && (resource.data.negocioId == request.auth.uid || (admin() && resource.data.negocioId.matches('demo-.*')))
-        && !cambia(['codigo', 'negocioId', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'total', 'destino', 'creado', 'dia', 'mes']);
+      allow update: if (logueado() && (resource.data.negocioId == request.auth.uid || (admin() && resource.data.negocioId.matches('demo-.*')))
+        && !cambia(['codigo', 'negocioId', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'total', 'destino', 'creado', 'dia', 'mes']))
+        // El repartidor lo toma: solo si nadie lo tiene y ganó la oferta en la misma operación
+        || (repActivo() && resource.data.get('repUid', null) == null && d().repUid == request.auth.uid && d().repartidor.uid == request.auth.uid
+            && getAfter(/databases/$(database)/documents/ofertas/$(pid)).data.tomadoPor == request.auth.uid
+            && soloCambia(['repUid', 'repartidor', 'actualizado']))
+        // Su repartidor: ubicación en vivo, «recogí» (camino) y «entregado». O soltarlo antes de recogerlo.
+        || (logueado() && resource.data.get('repUid', null) == request.auth.uid
+            && soloCambia(['repUid', 'repartidor', 'estado', 'despachado', 'entregado', 'actualizado'])
+            && ((d().repUid == request.auth.uid && d().repartidor.uid == request.auth.uid
+                 && (!cambia(['estado']) || (d().estado == 'camino' && resource.data.estado in ['cocina', 'listo']) || (d().estado == 'entregado' && resource.data.estado == 'camino')))
+              || (d().repUid == null && d().repartidor == null && !cambia(['estado']) && resource.data.estado in ['cocina', 'listo'])));
       allow delete: if false;
     }
   }
