@@ -291,3 +291,4 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .pg-c .doc-i { width: 90px; } @media (max-width: 700px) { .pg { grid-template-columns: 70px 1fr; } .pg .acts-g { grid-column: 1 / -1; } .pg-c .doc-i { width: 70px; } }
 .rp-n { display: flex; gap: 10px; align-items: center; } .rp-n img, .rp-n > span { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--acc); display: grid; place-items: center; font-weight: 800; flex: none; } .rp-n small { display: block; }
 .foto-n { align-items: center; } .foto-n img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; }
+.mapa-err { height: 100%; min-height: 120px; display: grid; place-content: center; justify-items: center; gap: 8px; text-align: center; padding: 16px; color: #625C73; } .mapa-err p { margin: 0; }
