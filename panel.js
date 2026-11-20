@@ -22,11 +22,11 @@ function pantallaLogin(modo = "entrar") {
     : `<button class="btn btn-google btn-lg" id="lG"><svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Continuar con Google</button>
       <div class="o-sep"><span>o con tu correo</span></div>
       <form id="lf" class="l-f">${fld("email", "Correo", "", { type: "email", req: true, extra: 'autocomplete="username"' })}${fld("pass", modo === "crear" ? "Crea una contraseña (mín. 6)" : "Contraseña", "", { type: "password", req: true, extra: `autocomplete="${modo === "crear" ? "new-password" : "current-password"}" minlength="6"` })}
-      <p class="l-err" id="lErr" role="alert"></p><button class="btn btn-pri btn-lg">${modo === "crear" ? "Crear cuenta" : "Entrar"}</button></form>
+      <p class="l-err js-auth-err" id="lErr" role="alert"></p><button class="btn btn-pri btn-lg">${modo === "crear" ? "Crear cuenta" : "Entrar"}</button></form>
       ${modo === "crear" ? `<button class="btn-link" id="lM">Ya tengo cuenta · Entrar</button>` : `<button class="btn-link" id="lM">¿Tu negocio aún no está en Apamuy? Regístralo aquí</button><button class="btn-link" id="lR">Olvidé mi contraseña</button>`}`}
     </div></main>`;
   if (DEMO) return $$("[data-demo]").forEach(b => b.onclick = () => { const [uid, email] = b.dataset.demo.split("|"); Sesion._demo({ uid, email, nombre: "" }); });
-  const err = $("#lErr");
+  const err = $("#lErr"); errorAuthGuardado(err);
   $("#lG").onclick = async () => { err.textContent = ""; try { await Sesion.google(); } catch (e) { err.textContent = errorAuth(e); } };
   $("#lM").onclick = () => pantallaLogin(modo === "crear" ? "entrar" : "crear");
   $("#lR")?.addEventListener("click", async () => { const e = $("[name=email]").value.trim(); if (!e) return err.textContent = "Escribe tu correo arriba y vuelve a tocar «Olvidé mi contraseña»."; try { await Sesion.recuperar(e); toast("Te enviamos un correo para cambiar tu contraseña"); } catch (x) { err.textContent = errorAuth(x); } });
