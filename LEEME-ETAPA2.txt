@@ -1,8 +1,25 @@
-APAMUY — Etapa 2 (repartidores): qué subir
-==========================================
-apamuy (web clientes) → sube todo el ZIP apamuy.zip (NO trae firebase-config.js: el tuyo se queda).
-   El cliente ahora ve «Buscando repartidor», el nombre, vehículo y placa, y su ubicación en vivo.
-apamuy-panel → sube todo el ZIP apamuy-panel.zip (NO trae firebase-config.js).
-   Nuevo: Repartidores, Cobros repartidores, «Tu Yape» en Configuración, tamaño de envío en Ferretería/Talleres.
-apamuy-repartidor → sube todo el ZIP apamuy-repartidor.zip y sigue COMO-CONFIGURAR.txt.
-¡Pega las reglas NUEVAS de Firestore y Storage!
+APAMUY — Envíos de paquetes, estrellas y diseño nuevo: qué hacer
+================================================================
+1) SUBIR LOS 3 ZIPs (cada uno a su repo, reemplazando todo):
+   apamuy.zip → repo apamuy   ·   apamuy-panel.zip → repo apamuy-panel   ·   apamuy-repartidor.zip → repo apamuy-repartidor
+   (apamuy y apamuy-panel NO traen firebase-config.js: el tuyo se queda igual.)
+
+2) FIREBASE → pega las reglas NUEVAS (vienen en apamuy-panel):
+   - Firestore Database → Reglas → borra todo → pega firestore.rules → Publicar.
+   - Storage → Reglas → borra todo → pega storage.rules → Publicar.
+   Si al Publicar sale un error en rojo, mándame captura.
+
+3) PANEL (admin) → «Comisión y delivery» → sección «Envíos de paquetes»:
+   revisa el precio mínimo (S/ 5) y el precio sugerido → Guardar.
+
+4) REPARTIDORES QUE YA TIENES APROBADOS:
+   - Panel → Repartidores → abre cada uno → Guardar (así se crea su perfil público con estrellas).
+   - En su app les sale «Sube tu foto de perfil». Cuando la suban, la apruebas en
+     Panel → Repartidores → «📸 Fotos nuevas» → Ver → «Aprobar foto nueva» → Guardar.
+
+5) PRUEBA
+   a. apamuy.app → barra de abajo → «Enviar» → marca A y B en el mapa → pon tu precio → Buscar repartidor.
+   b. En la app del repartidor (Disponible) aparece «📦 Envíos de paquetes»: Aceptar o Contraofertar.
+   c. El cliente ve las contraofertas con foto, estrellas y placa → Elegir.
+   d. «Compartir ruta» → quien recibe abre el enlace sin cuenta y ve el mapa en vivo.
+   e. Al entregar, el cliente califica con estrellas.

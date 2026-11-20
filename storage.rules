@@ -24,6 +24,11 @@ service firebase.storage {
       allow read: if request.auth != null && (request.auth.uid == uid || admin());
       allow create, update: if request.auth != null && request.auth.uid == uid && documento();
     }
+    // Foto de perfil del repartidor (pública: la ven los clientes cuando el admin la aprueba)
+    match /perfiles/{uid}/{archivo} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid && imagen();
+    }
     // Capturas de los pagos del repartidor a Apamuy
     match /pagosrep/{uid}/{archivo} {
       allow read: if request.auth != null && (request.auth.uid == uid || admin());

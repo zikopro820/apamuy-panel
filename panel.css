@@ -289,3 +289,5 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .doc-i { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 10px; background: #f1ece4; display: grid; place-items: center; font-size: 1.6rem; border: 1px solid var(--line); }
 .pg-l { display: grid; gap: 10px; } .pg { display: grid; grid-template-columns: 90px 1fr auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; } .pg small { display: block; color: var(--muted); }
 .pg-c .doc-i { width: 90px; } @media (max-width: 700px) { .pg { grid-template-columns: 70px 1fr; } .pg .acts-g { grid-column: 1 / -1; } .pg-c .doc-i { width: 70px; } }
+.rp-n { display: flex; gap: 10px; align-items: center; } .rp-n img, .rp-n > span { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--acc); display: grid; place-items: center; font-weight: 800; flex: none; } .rp-n small { display: block; }
+.foto-n { align-items: center; } .foto-n img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #fff; }
