@@ -1,0 +1,31 @@
+APAMUY — Cómo dejarlo funcionando (etapa 1)
+===========================================
+
+A) FIREBASE (proyecto apamuy-faf7a)
+ 1. Authentication → Método de acceso → habilita GOOGLE y CORREO/CONTRASEÑA.
+    Authentication → Configuración → Dominios autorizados → Agregar: zikopro820.github.io  (y luego apamuy.app)
+ 2. Authentication → Usuarios → Agregar usuario:  admin@apamuy.com  + una contraseña segura.
+    ¡Hazlo YA, antes de publicar! Así nadie más puede crear esa cuenta.
+ 3. Firestore Database → (ya creada en southamerica-east1) → Reglas → pega firestore.rules → Publicar.
+ 4. Storage → (región US-EAST1) → Reglas → pega storage.rules → Publicar.
+
+B) GITHUB PAGES
+ - Repo apamuy        → sube TODO el ZIP apamuy.zip        → Settings → Pages → main / root.
+ - Repo apamuy-panel  → sube TODO el ZIP apamuy-panel.zip  → Settings → Pages → main / root.
+ - apamuy-repartidor y apamuy-servidor: déjalos vacíos por ahora (etapas 2 y 3).
+ Web de clientes:  https://zikopro820.github.io/apamuy/
+ Panel:            https://zikopro820.github.io/apamuy-panel/
+
+C) PRIMERA PRUEBA
+ 1. Entra al panel con admin@apamuy.com → Configuración: revisa comisión (10%) y tarifas de delivery → Guardar.
+ 2. Con OTRA cuenta (tu Gmail, por ejemplo) entra al panel → «Regístralo aquí» → registra un negocio de prueba.
+ 3. Vuelve como admin → Negocios → Revisar → Estado «Activo» → Guardar.
+ 4. Con la cuenta del negocio: Carta y precios → Categorías → agrega platos con foto.
+ 5. En el celular abre la web → elige el negocio → pide → entra con Google → pon tu celular y tu dirección en el mapa.
+ 6. El pedido suena en el panel del negocio → Aceptar → Listo → Salió → Entregado.
+
+D) SI APARECE UN ERROR CON UN ENLACE "create index" (crear índice)
+ Ábrelo, pulsa «Crear índice», espera 2-3 minutos y recarga. Es normal la primera vez.
+
+MODO DEMO: si en firebase-config.js el apiKey empieza con "PEGA", todo funciona sin Firebase
+(datos guardados solo en ese navegador), con 3 negocios de ejemplo.
