@@ -4,7 +4,7 @@
    ========================================================= */
 window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyCnwCNXLZ-xTm37LgkeQ28ast_c7G6-m5w",
-  authDomain: "apamuy-faf7a.firebaseapp.com",
+  authDomain: "apamuy.app",
   projectId: "apamuy-faf7a",
   storageBucket: "apamuy-faf7a.firebasestorage.app",
   messagingSenderId: "461554598984",
@@ -14,7 +14,7 @@ window.FIREBASE_CONFIG = {
 window.APAMUY = {
   nombre: "Apamuy",
   lema: "Te lo traemos.",
-  web: "https://zikopro820.github.io/apamuy",            // app de clientes
+  web: "https://apamuy.app",                             // app de clientes
   panel: "https://zikopro820.github.io/apamuy-panel",    // panel de negocios y admin
   // Correos con permiso de ADMINISTRADOR GENERAL (usa los MISMOS en firestore.rules y storage.rules)
   admins: ["admin@apamuy.com"],
