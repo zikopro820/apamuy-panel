@@ -15,7 +15,7 @@ window.APAMUY = {
   nombre: "Apamuy",
   lema: "Te lo traemos.",
   web: "https://apamuy.app",                             // app de clientes
-  panel: "https://zikopro820.github.io/apamuy-panel",    // panel de negocios y admin
+  panel: "https://panel.apamuy.app",                     // panel de negocios y admin
   // Correos con permiso de ADMINISTRADOR GENERAL (usa los MISMOS en firestore.rules y storage.rules)
   admins: ["admin@apamuy.com"],
   // Punto de inicio de los mapas (Cusco). Se puede cambiar en el panel → Configuración.
