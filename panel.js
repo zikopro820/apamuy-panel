@@ -176,7 +176,7 @@ function vigilar() {
 VIEWS.inicio = async () => {
   const hoy = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HOY()])).filter(p => !["anulado", "rechazado"].includes(p.estado));
   const ent = hoy.filter(p => p.estado === "entregado"), ventas = ent.reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0);
-  $("#view").innerHTML = topBar(`Hola, ${esc(NEG.nombre)}`, "Así va tu negocio hoy.", NEG.estado === "activo" ? `<a class="btn btn-light btn-sm" href="${esc(AP.web)}/negocio.html?n=${encodeURIComponent(NEG.id)}" target="_blank" rel="noopener">${ico("arrow")} Ver mi tienda en la app</a>` : "") + `
+  $("#view").innerHTML = topBar(`Hola, ${esc(NEG.nombre)}`, "Así va tu negocio hoy.", NEG.estado === "activo" ? `<a class="btn btn-light btn-sm" href="${esc(AP.web)}/negocio?n=${encodeURIComponent(NEG.id)}" target="_blank" rel="noopener">${ico("arrow")} Ver mi tienda en la app</a>` : "") + `
     <div class="kpis neon"><div class="kpi"><span>Ventas de hoy</span><b>${S(ventas)}</b><small>${ent.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Pedidos de hoy</span><b>${hoy.length}</b><small>sin contar anulados</small></div>
       <div class="kpi"><span>Por atender</span><b>${PEDS.filter(p => ["por-validar", "nuevo"].includes(p.estado)).length}</b><small>nuevos o por validar</small></div><div class="kpi"><span>En curso</span><b>${PEDS.length}</b><small>preparando, listos o en camino</small></div>
       <div class="kpi"><span>Comisión de hoy</span><b>${S(ventas * pctDe(NEG) / 100)}</b><small>${pctDe(NEG)}% de la comida entregada</small></div></div>
@@ -239,7 +239,7 @@ function opOferta(p, veh, tiempo, n = NEG) {
     { op: "set", col: "pedidos", id: p.id, data: { oferta: true, vehiculo: veh || "todos" } }];
 }
 const cerrarOferta = p => p.oferta ? [{ op: "set", col: "ofertas", id: p.id, data: { estado: "cerrada" } }] : [];
-const msgCli = (p, t) => `Hola ${String(p.cliente.nombre || "").split(" ")[0]} 👋 te escribe *${NEG.nombre}* por tu pedido de Apamuy.\n\n${t}\n\nSigue tu pedido aquí: ${AP.web}/pedido.html?c=${encodeURIComponent(p.codigo)}`;
+const msgCli = (p, t) => `Hola ${String(p.cliente.nombre || "").split(" ")[0]} 👋 te escribe *${NEG.nombre}* por tu pedido de Apamuy.\n\n${t}\n\nSigue tu pedido aquí: ${AP.web}/pedido?c=${encodeURIComponent(p.codigo)}`;
 function movimiento(m) { return { op: "set", col: `negocios/${NEG.id}/movimientos`, id: codigo("MV"), data: { fecha: HOY(), hora: new Date().toISOString(), ...m, monto: r2(m.monto) } }; }
 async function accionPedido(a, p) {
   const upd = data => ({ op: "set", col: "pedidos", id: p.id, data: { ...data, actualizado: new Date().toISOString() } });
