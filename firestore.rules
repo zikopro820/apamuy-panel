@@ -164,6 +164,23 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Libro de Reclamaciones virtual: cualquiera puede dejar su hoja (sin cuenta). Numeración correlativa. Solo el admin las lee.
+    match /contadores/{id} {
+      allow get: if id == 'reclamos';
+      allow create: if id == 'reclamos' && d().n == 1 && d().keys().hasOnly(['n']) && existsAfter(/databases/$(database)/documents/reclamos/LR-1);
+      allow update: if id == 'reclamos' && d().n == resource.data.n + 1 && d().keys().hasOnly(['n'])
+        && existsAfter(/databases/$(database)/documents/reclamos/$('LR-' + string(d().n)));
+    }
+    match /reclamos/{rid} {
+      allow read: if admin();
+      allow create: if rid == 'LR-' + string(d().numero) && d().codigo == rid && d().estado == 'pendiente'
+        && getAfter(/databases/$(database)/documents/contadores/reclamos).data.n == d().numero
+        && d().tipo in ['Reclamo', 'Queja'] && d().detalle is string && d().detalle.size() <= 2000 && d().pedidoConsumidor.size() <= 1000
+        && d().consumidor.nombre is string && d().consumidor.email is string;
+      allow update: if admin();
+      allow delete: if false;
+    }
+
     // Pagos del % que hace el repartidor a Apamuy
     match /pagosRep/{id} {
       allow read: if logueado() && (resource.data.uid == request.auth.uid || admin());
@@ -201,3 +218,4 @@ service cloud.firestore {
     }
   }
 }
+
