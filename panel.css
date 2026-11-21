@@ -303,3 +303,4 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .sol-b { display: flex; gap: 12px; align-items: flex-start; } .sol-b h3 { margin: 0 0 4px; font-size: 1.05rem; line-height: 1.3; } .sol-b p { margin: 0; }
 .sol-f { width: 76px; height: 76px; object-fit: cover; border-radius: 12px; flex: none; }
 .alert.sm { font-size: .86rem; padding: 8px 10px; margin: 0; }
+.btn-ed { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px 4px; margin: 0 0 10px; } .btn-ed-h { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; } .btn-ed-h .chk { margin: 0; }
