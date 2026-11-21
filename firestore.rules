@@ -36,8 +36,8 @@ service cloud.firestore {
       allow create: if ejemplo() || (dueno() && d().owner == nid && d().estado == 'pendiente'
         && !('comision' in d()) && !('aprobado' in d()) && !('motivo' in d()));
       // El dueño edita sus datos, pero NO su estado ni su comisión. El admin SOLO cambia estado y comisión.
-      allow update: if ejemplo() || (dueno() && !cambia(['estado', 'owner', 'email', 'comision', 'aprobado', 'motivo', 'revisado']))
-                    || (admin() && soloCambia(['estado', 'comision', 'motivo', 'revisado', 'aprobado']));
+      allow update: if ejemplo() || (dueno() && !cambia(['estado', 'owner', 'email', 'comision', 'aprobado', 'motivo', 'revisado', 'bloqueoCobro']))
+                    || (admin() && soloCambia(['estado', 'comision', 'motivo', 'revisado', 'aprobado', 'bloqueoCobro']));
       allow delete: if admin();
 
       // Carta: todos la ven, SOLO el dueño la edita (el admin no)
@@ -107,6 +107,15 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
+    // 💰 Comisión semanal de los negocios (la crea el servidor cada lunes; el negocio sube su pago; el admin aprueba)
+    match /liquidaciones/{lid} {
+      allow read: if logueado() && (resource.data.negocioId == request.auth.uid || admin());
+      allow create, delete: if admin();
+      allow update: if admin()
+        || (logueado() && resource.data.negocioId == request.auth.uid && resource.data.estado == 'pendiente' && d().estado == 'revision'
+            && soloCambia(['estado', 'pago', 'rechazo', 'actualizado']) && d().pago.captura is string && d().pago.captura.size() < 500000);
+    }
+
     // 🔍 Buscar repuesto / 🚨 Auxilio: el cliente pregunta y las ferreterías y talleres de SU provincia responden.
     // Sin nombre completo ni celular del cliente (eso solo lo ve la tienda que elige, en el pedido).
     match /solicitudes/{sid} {
@@ -132,7 +141,7 @@ service cloud.firestore {
         function neg() { return get(/databases/$(database)/documents/negocios/$(nid)).data; }
         allow read: if logueado() && (request.auth.uid == nid || admin() || sol().clienteUid == request.auth.uid);
         allow create, update: if logueado() && request.auth.uid == nid && d().negocioId == nid && sol().estado == 'abierta'
-          && neg().estado == 'activo' && neg().prov == sol().prov && neg().rubro in sol().rubros
+          && neg().estado == 'activo' && neg().get('bloqueoCobro', false) != true && neg().prov == sol().prov && neg().rubro in sol().rubros
           && d().precio is number && d().precio > 0 && d().precio < 100000
           && (!('foto' in d()) || (d().foto is string && d().foto.size() < 300000))
           && d().keys().hasOnly(['negocioId', 'negocio', 'precio', 'calidad', 'nota', 'foto', 'llegaMin', 'creado', 'actualizado']);
@@ -235,6 +244,7 @@ service cloud.firestore {
       allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || resource.data.negocioId == request.auth.uid || admin() || resource.data.repUid == request.auth.uid);
       allow create: if logueado() && d().clienteUid == request.auth.uid && d().codigo == pid
         && get(/databases/$(database)/documents/negocios/$(d().negocioId)).data.estado == 'activo'
+        && get(/databases/$(database)/documents/negocios/$(d().negocioId)).data.get('bloqueoCobro', false) != true
         && d().keys().hasOnly(['codigo', 'negocioId', 'negocio', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'km', 'total', 'entrega', 'destino', 'nota',
              'pago', 'operacion', 'montoLeido', 'coincide', 'fechaOk', 'pagaCon', 'captura', 'estado', 'dia', 'mes', 'creado', 'servicio', 'mayorEdad', 'solicitud'])
         && d().estado in ['nuevo', 'por-validar'] && (d().estado == 'nuevo') == (d().pago in ['Efectivo', 'A coordinar'])

@@ -5,7 +5,7 @@
    ========================================================= */
 const VIEWS = {}; let VISTA = "", YO = null, NEG = null, ADMIN = false;
 const NAV_NEG = [["inicio", "home", "Inicio"], ["pedidos", "bell", "Pedidos"], ["carta", "fire", "Carta y precios"], ["caja", "cash", "Caja"], ["comision", "percent", "Comisión Apamuy"], ["negocio", "store", "Mi negocio"]];
-const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["enviosAdm", "box", "Envíos"], ["comisiones", "percent", "Comisiones"], ["repartidores", "bike", "Repartidores"], ["cobrosRep", "cash", "Cobros repartidores"],
+const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["enviosAdm", "box", "Envíos"], ["comisiones", "percent", "Comisiones"], ["cobrosNeg", "cash", "Cobros negocios"], ["repartidores", "bike", "Repartidores"], ["cobrosRep", "cash", "Cobros repartidores"],
   ["clientes", "users", "Clientes"], ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["config", "gear", "Comisión y delivery"]];
 const ESTADOS_N = { pendiente: ["En revisión", "warn"], activo: ["Activo", "ok"], suspendido: ["Suspendido", "bad"], rechazado: ["Rechazado", "bad"] };
 const estN = e => { const [t, c] = ESTADOS_N[e] || [e, "mute"]; return `<span class="st ${c}">${t}</span>`; };
@@ -146,7 +146,7 @@ function armar(nav, inicio) {
       <nav class="s-nav">${nav.map(([k, i, t]) => `<button data-v="${k}">${ico(i)}<span>${t}</span><b class="cnt" id="cnt-${k}" hidden></b></button>`).join("")}</nav>
       <div class="s-user"><small>Sesión</small><b>${esc(YO.email)}</b>${DEMO ? `<span class="st warn">MODO DEMO</span>` : ""}<button class="btn btn-light btn-sm" id="salir">${ico("logout")} Salir</button></div></aside>
     <div class="main"><header class="tb"><button class="tb-m" id="menuB" aria-label="Menú">${ico("menu")}</button><span class="tb-f">${fmtF(HOY(), { weekday: "long", day: "numeric", month: "long" })}</span>
-      ${!ADMIN && NEG.estado === "activo" ? `<button class="btn btn-sm tb-ab" id="abierto"></button>` : ""}</header><div id="banner"></div><main id="view" class="view" tabindex="-1"></main></div></div>`;
+      ${!ADMIN && NEG.estado === "activo" ? `<button class="btn btn-sm tb-ab" id="abierto"></button>` : ""}</header><div id="banner"></div><div id="bannerCob"></div><main id="view" class="view" tabindex="-1"></main></div></div>`;
   marcaPanel(); pintarAbierto(); bannerEstado(); bannerAvisos();
   $(".s-nav").onclick = e => { const b = e.target.closest("[data-v]"); if (b) go(b.dataset.v); };
   $("#salir").onclick = () => Sesion.salir(); $("#menuB").onclick = () => $("#side").classList.toggle("open");
@@ -179,6 +179,9 @@ let PARAR = null;   // detiene la escucha en vivo de la vista anterior
 const ACTIVOS = ["por-validar", "nuevo", "cocina", "listo", "camino"];
 let ULT = null, PEDS = [];
 function vigilar() {
+  // Comisión semanal: lo que debe, banner y número en el menú
+  DB.escucharLista("liquidaciones", [["negocioId", "==", NEG.id]], l => { LIQ = l.sort((a, b) => String(b.semana).localeCompare(a.semana)); bannerCobro(); if (VISTA === "comision" && !$("#modal.open")) VIEWS.comision(); });
+  DB.escuchar("negocios", NEG.id, n => { if (n && !!n.bloqueoCobro !== !!NEG.bloqueoCobro) { NEG.bloqueoCobro = !!n.bloqueoCobro; bannerCobro(); } });
   DB.escucharLista("pedidos", [["negocioId", "==", NEG.id], ["estado", "in", ACTIVOS]], l => {
     PEDS = l; const n = l.filter(p => ["por-validar", "nuevo"].includes(p.estado)).length, b = $("#cnt-pedidos");
     if (b) { b.textContent = n; b.hidden = !n; } document.title = n ? `(${n}) Panel · Apamuy` : "Panel · Apamuy";
@@ -191,7 +194,7 @@ function vigilar() {
    Al cliente le llega lo que respondas: precio, calidad, nota y foto. Si te elige, te llega como pedido normal. */
 const AUX_KM = 30;
 let SOLS = [], SOLS_T = [], VSOL = null, MISR = {};
-const solVisible = s => s.rubros && s.rubros.includes(NEG.rubro) && new Date(s.vence) > Date.now() && s.clienteUid !== NEG.id
+const solVisible = s => !NEG.bloqueoCobro && s.rubros && s.rubros.includes(NEG.rubro) && new Date(s.vence) > Date.now() && s.clienteUid !== NEG.id
   && (s.tipo !== "auxilio" || (NEG.ubic && s.ubic && distanciaKm(NEG.ubic, s.ubic) <= AUX_KM));
 function filtrarSol() {
   const antes = new Set(SOLS.map(s => s.id)); SOLS = SOLS_T.filter(solVisible).sort((a, b) => String(b.creado).localeCompare(a.creado));
@@ -434,18 +437,55 @@ VIEWS.caja = async () => {
 };
 
 /* ================= NEGOCIO · COMISIÓN ================= */
+/* ---------- Comisión semanal: el negocio paga por Yape y sube su captura ---------- */
+let LIQ = [];
+const porPagar = () => LIQ.filter(l => l.estado === "pendiente");
+function bannerCobro() {
+  const B = $("#bannerCob"); if (!B || ADMIN) return; const pp = porPagar(), t = r2(pp.reduce((a, l) => a + l.total, 0)), rev = LIQ.some(l => l.estado === "revision");
+  const c = $("#cnt-comision"); if (c) { c.textContent = pp.length; c.hidden = !pp.length; }
+  const v = pp.map(l => l.vence).sort()[0];
+  B.innerHTML = NEG.bloqueoCobro ? `<div class="alert bad">${ico("lock")} <span><b>Tu tienda está oculta en la app</b> porque tienes ${S(t)} de comisión sin pagar. ${rev ? "Ya recibimos tu pago: cuando lo aprobemos, tu tienda vuelve a aparecer." : "Paga y, cuando aprobemos tu pago, vuelve a aparecer."}</span>${pp.length ? `<button class="btn btn-pri btn-sm" data-go="comision">💰 Pagar ahora</button>` : ""}</div>`
+    : pp.length ? `<div class="alert warn">${ico("cash")} <span>Tienes <b>${S(t)}</b> de comisión por pagar. Vence el <b>${fmtF(v, { weekday: "long", day: "numeric", month: "short" })} a las 11:59 p.m.</b> Si no pagas, tu tienda se oculta de la app.</span><button class="btn btn-pri btn-sm" data-go="comision">💰 Pagar mi comisión</button></div>` : "";
+}
 VIEWS.comision = async () => {
-  const mes = HOY().slice(0, 7), l = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["mes", "==", mes])).filter(p => p.estado === "entregado"), pct = pctDe(NEG), v = l.reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0);
-  $("#view").innerHTML = topBar("Comisión Apamuy", `Apamuy cobra el ${pct}% de la comida de cada pedido entregado por la app.`) + `
-    <div class="kpis neon"><div class="kpi"><span>Ventas por la app (mes)</span><b>${S(v)}</b><small>${l.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Comisión del mes</span><b>${S(v * pct / 100)}</b><small>${pct}%</small></div></div>
-    <section class="card"><p>📅 Cada semana te enviaremos tu liquidación para pagar por Yape. Muy pronto la verás aquí con el botón para subir tu pago.</p></section>`;
+  const pct = pctDe(NEG), lun = lunesDe(HOY()), meses = [...new Set([lun.slice(0, 7), HOY().slice(0, 7)])];
+  const ps = (await Promise.all(meses.map(m => DB.list("pedidos", ["negocioId", "==", NEG.id], ["mes", "==", m])))).flat().filter(p => p.estado === "entregado" && p.dia >= lun);
+  const vSem = r2(ps.reduce((a, p) => a + ventaPed(p), 0)), pp = porPagar(), t = r2(pp.reduce((a, l) => a + l.total, 0)), acum = LIQ.filter(l => l.estado === "acumulada");
+  const fila = l => `<tr><td><b>${semTxt(l)}</b>${l.arrastre ? `<small>+ semanas anteriores (${S(l.arrastre.comision)})</small>` : ""}</td><td>${l.pedidos}</td><td class="r">${S(l.ventas)}</td><td>${l.pct}%</td><td class="r"><b>${S(l.total)}</b></td>
+    <td><span class="st ${EST_L[l.estado]?.[1] || ""}">${EST_L[l.estado]?.[0] || l.estado}</span>${l.rechazo && l.estado === "pendiente" ? `<small class="neg">❌ ${esc(l.rechazo)}</small>` : ""}</td></tr>`;
+  $("#view").innerHTML = topBar("Comisión Apamuy", `Apamuy cobra el ${pct}% de lo que vendes por la app. Se liquida cada lunes (semana de lunes a domingo) y tienes hasta el miércoles para pagar por Yape.`) + `
+    ${pp.length ? `<section class="card pagar-c"><div><span class="muted">Por pagar</span><b class="big">${S(t)}</b><small>${pp.map(l => `Semana del ${semTxt(l)}`).join(" · ")} · vence el ${fmtF(pp.map(l => l.vence).sort()[0], { weekday: "long", day: "numeric", month: "short" })}</small></div>
+      <button class="btn btn-pri btn-lg" id="pgCom">💰 Pagar mi comisión</button></section>` : LIQ.some(l => l.estado === "revision") ? `<div class="alert pri">${ico("clock")} <span>Recibimos tu pago. Lo estamos revisando.</span></div>` : `<div class="alert ok">${ico("check")} <span>Estás al día. ¡Gracias!</span></div>`}
+    <div class="kpis neon"><div class="kpi"><span>Esta semana (desde el lunes)</span><b>${S(vSem)}</b><small>${ps.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Comisión de esta semana</span><b>${S(vSem * pct / 100)}</b><small>se cobra el próximo lunes</small></div>
+      ${acum.length ? `<div class="kpi"><span>Acumulado sin cobrar</span><b>${S(acum.reduce((a, l) => a + l.total, 0))}</b><small>ventas menores de ${S(COB.minVentas)}: se suma a la próxima</small></div>` : ""}</div>
+    <section class="card"><h2>${ico("file")} Mis semanas</h2><div class="tbl-w"><table class="tbl"><thead><tr><th>Semana</th><th>Pedidos</th><th class="r">Ventas</th><th>%</th><th class="r">Comisión</th><th>Estado</th></tr></thead><tbody>
+      ${LIQ.filter(l => l.estado !== "sumada").map(fila).join("") || `<tr><td colspan="6" class="muted">Aún no hay semanas liquidadas. La primera se hace el lunes.</td></tr>`}</tbody></table></div>
+      <p class="muted sm">Si en una semana vendes menos de ${S(COB.minVentas)} no te cobramos: se suma a la semana siguiente.</p></section>`;
+  $("#pgCom")?.addEventListener("click", pagarComision);
 };
+function pagarComision() {
+  const pp = porPagar(), t = r2(pp.reduce((a, l) => a + l.total, 0)), C = CONF.cobro || {}; let CAP = "";
+  if (!pp.length) return;
+  if (!C.yape) return modal("Pagar comisión", `<p>Aún no tenemos el Yape de Apamuy configurado. Escríbenos por WhatsApp${CONF.soporte ? ` al ${esc(CONF.soporte)}` : ""}.</p>`, null);
+  modal("Pagar mi comisión", `<div class="yape-c">${C.qr ? `<img src="${esc(imgUrl(C.qr))}" alt="QR de Yape" class="yape-qr">` : ""}<div><span class="muted">Yapea exactamente</span><b class="big">${S(t)}</b>
+      <p>al <b class="mono">${esc(C.yape)}</b><br><small>a nombre de ${esc(C.titular || "Apamuy")}</small></p><button type="button" class="btn btn-light btn-sm" id="cpY">${ico("file")} Copiar número</button></div></div>
+    <ol class="pasos-c"><li>Abre Yape y paga <b>${S(t)}</b> (escanea el QR o usa el número).</li><li>Toma captura de la pantalla de pago.</li><li>Súbela aquí con el número de operación.</li></ol>
+    <div class="g2">${fld("operacion", "Número de operación", "", { req: true, ph: "Ej. 12345678" })}<div class="fld"><span>Captura del Yape *</span><div class="foto-up"><span class="fp-logo" id="cpV"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir captura<input type="file" accept="image/*" id="cpF" hidden></label></div></div></div>`,
+    async d => {
+      if (!CAP) { toast("Sube la captura del Yape", true); return false; }
+      const pago = { operacion: d.operacion.trim().slice(0, 30), captura: CAP, monto: t, fecha: new Date().toISOString() };
+      await DB.batch(pp.map(l => ({ op: "set", col: "liquidaciones", id: l.id, data: { estado: "revision", pago, rechazo: null, actualizado: pago.fecha } })));
+      toast("✅ Pago enviado. Te avisamos cuando lo aprobemos."); VIEWS.comision();
+    }, "Enviar pago", { alAbrir: F => {
+      $("#cpY", F).onclick = () => navigator.clipboard?.writeText(C.yape).then(() => toast("Número copiado"));
+      $("#cpF", F).onchange = async e => { const f = e.target.files[0]; if (!f) return; CAP = await redimensionar(f, 1000, .7); $("#cpV").style.backgroundImage = `url('${CAP}')`; }; } });
+}
 VIEWS.negocio = async () => { $("#view").innerHTML = topBar("Mi negocio", "Estos datos se ven en la app. " + estN(NEG.estado)) + `<div id="negF"></div>`; formNegocio($("#negF"), NEG); };
 
 /* ================= ADMIN · avisos ================= */
 function vigilarAdm() {
   const cnt = k => l => { const b = $("#cnt-" + k); if (b) { b.textContent = l.length; b.hidden = !l.length; } };
-  DB.escucharLista("negocios", [["estado", "==", "pendiente"]], cnt("negocios")); DB.escucharLista("repartidores", [["estado", "==", "pendiente"]], cnt("repartidores")); DB.escucharLista("pagosRep", [["estado", "==", "pendiente"]], cnt("cobrosRep"));
+  DB.escucharLista("negocios", [["estado", "==", "pendiente"]], cnt("negocios")); DB.escucharLista("repartidores", [["estado", "==", "pendiente"]], cnt("repartidores")); DB.escucharLista("pagosRep", [["estado", "==", "pendiente"]], cnt("cobrosRep")); DB.escucharLista("liquidaciones", [["estado", "==", "revision"]], cnt("cobrosNeg"));
 }
 
 /* ================= ADMIN · RESUMEN ================= */
@@ -513,11 +553,59 @@ VIEWS.comisiones = async () => {
     <div class="kpis neon"><div class="kpi"><span>Comisión del mes</span><b>${S(filas.reduce((a, f) => a + f.c, 0))}</b></div><div class="kpi"><span>Ventas de comida</span><b>${S(filas.reduce((a, f) => a + f.v, 0))}</b></div><div class="kpi"><span>Pedidos entregados</span><b>${filas.reduce((a, f) => a + f.cnt, 0)}</b></div></div>
     <section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Negocio</th><th>Pedidos</th><th class="r">Ventas</th><th>%</th><th class="r">Comisión</th><th></th></tr></thead><tbody>
     ${filas.map(f => `<tr><td><b>${esc(f.n.nombre)}</b></td><td>${f.cnt}</td><td class="r">${S(f.v)}</td><td>${f.pct}%</td><td class="r"><b>${S(f.c)}</b></td><td>${f.n.whatsapp ? `<button class="btn btn-wa btn-sm" data-cob="${esc(f.n.id)}">${ico("wa")} Cobrar</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin pedidos entregados ese mes.</td></tr>`}</tbody></table></div>
-    <p class="muted sm">En la etapa 3 esto se hace solo cada semana: liquidación, pago por Yape con captura y suspensión automática si no paga.</p></section>`;
+    <p class="muted sm">El cobro semanal, los pagos por Yape y los bloqueos están en «Cobros negocios».</p></section>`;
   $("#cm").onchange = e => { CM_M = e.target.value; VIEWS.comisiones(); };
   $("#view").onclick = e => { const b = e.target.closest("[data-cob]"); if (!b) return; const f = filas.find(x => x.n.id === b.dataset.cob);
     abrirWA(f.n.whatsapp, `Hola ${f.n.nombre} 👋 te escribe Apamuy.\n\nEn ${CM_M} vendiste ${S(f.v)} en comida por la app (${f.cnt} pedidos). La comisión del ${f.pct}% es *${S(f.c)}*.\n\n¡Gracias por vender con Apamuy!`); };
 };
+
+/* ================= ADMIN · COBROS A NEGOCIOS (comisión semanal) ================= */
+let CN_T = "revision";
+VIEWS.cobrosNeg = async () => {
+  const [L, ns] = await Promise.all([DB.list("liquidaciones"), DB.list("negocios")]), ahora = Date.now();
+  // Respaldo del servidor: oculta a los que ya vencieron sin pagar
+  const venc = L.filter(l => l.estado === "pendiente" && l.vence && new Date(l.vence).getTime() < ahora), aBloq = [...new Set(venc.map(l => l.negocioId))].filter(id => { const n = ns.find(x => x.id === id); return n && !n.bloqueoCobro; });
+  if (aBloq.length) { await DB.batch(aBloq.map(id => ({ op: "set", col: "negocios", id, data: { bloqueoCobro: true } }))); aBloq.forEach(id => { const n = ns.find(x => x.id === id); if (n) n.bloqueoCobro = true; }); }
+  const neg = id => ns.find(x => x.id === id) || {}, by = e => L.filter(l => l.estado === e).sort((a, b) => String(b.semana).localeCompare(a.semana));
+  const rev = by("revision"), pend = by("pendiente"), pag = by("pagada"), acu = by("acumulada");
+  const T = { revision: ["Por revisar", rev], pendiente: ["Por pagar", pend], pagada: ["Pagadas", pag], acumulada: ["Acumuladas (menos de S/ 30)", acu] };
+  const fila = l => { const n = neg(l.negocioId), v = l.vence && new Date(l.vence).getTime() < ahora;
+    return `<tr><td><b>${esc(l.negocio || n.nombre || l.negocioId)}</b>${n.bloqueoCobro ? ` <span class="st bad">🔒 oculto</span>` : ""}<small>Semana del ${semTxt(l)}${l.arrastre ? " + anteriores" : ""}</small></td><td>${l.pedidos}</td><td class="r">${S(l.ventasTotal)}</td><td>${l.pct}%</td><td class="r"><b>${S(l.total)}</b></td>
+      <td>${l.estado === "pendiente" ? `<span class="${v ? "neg" : ""}">${v ? "Venció " : "Vence "}${fmtF(l.vence)}</span>` : l.estado === "pagada" ? `<small>${fmtFH(l.aprobado)}</small>` : ""}</td>
+      <td class="nw">${l.estado === "pendiente" && (l.whatsapp || n.whatsapp) ? `<button class="btn btn-wa btn-sm" data-rec="${esc(l.id)}">${ico("wa")} Recordar</button>` : ""}</td></tr>`; };
+  $("#view").innerHTML = topBar("Cobros a negocios", `Cada lunes se liquida la semana (lunes a domingo). Tienen hasta el miércoles para pagar por Yape; si no, su tienda se oculta sola. Ventas menores de ${S(COB.minVentas)}: se acumulan.`,
+      `<button class="btn btn-light btn-sm" id="cnLiq">${ico("file")} Liquidar semana pasada</button>`) + `
+    <div class="kpis neon"><div class="kpi"><span>Por revisar</span><b>${rev.length}</b><small>${S(rev.reduce((a, l) => a + l.total, 0))}</small></div><div class="kpi"><span>Por cobrar</span><b>${S(pend.reduce((a, l) => a + l.total, 0))}</b><small>${pend.length} semana(s)</small></div>
+      <div class="kpi"><span>Ocultos por deuda</span><b>${ns.filter(n => n.bloqueoCobro).length}</b><small>negocio(s)</small></div><div class="kpi"><span>Cobrado este mes</span><b>${S(pag.filter(l => String(l.aprobado || "").slice(0, 7) === HOY().slice(0, 7)).reduce((a, l) => a + l.total, 0))}</b></div></div>
+    <div class="seg cn-tabs">${Object.entries(T).map(([k, [t, l]]) => `<button class="${CN_T === k ? "on" : ""}" data-cnt="${k}">${t} (${l.length})</button>`).join("")}</div>
+    ${CN_T === "revision" ? `<section class="card">${rev.length ? `<div class="pg-l">${rev.map(l => `<div class="pg"><a class="pg-c" href="${esc(l.pago?.captura || "#")}" target="_blank" rel="noopener">${l.pago?.captura ? `<img class="doc-i" src="${esc(l.pago.captura)}" alt="Captura">` : "—"}</a>
+        <div><b>${S(l.pago?.monto ?? l.total)}</b> · ${esc(l.negocio)}<small>op. ${esc(l.pago?.operacion || "")} · ${fmtFH(l.pago?.fecha)} · semana del ${semTxt(l)} (debe ${S(l.total)})</small></div>
+        <div class="acts-g"><button class="btn btn-pri btn-sm" data-ok="${esc(l.id)}">${ico("check")} Llegó</button><button class="btn btn-light btn-sm" data-no="${esc(l.id)}">No llegó</button></div></div>`).join("")}</div>
+        <div class="alert warn sm">${ico("alert")} <span>Antes de aprobar, <b>confirma en tu Yape que el dinero llegó</b>.</span></div>` : `<p class="muted">No hay pagos por revisar. 👍</p>`}</section>`
+      : `<section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Negocio</th><th>Pedidos</th><th class="r">Ventas</th><th>%</th><th class="r">Comisión</th><th></th><th></th></tr></thead><tbody>
+        ${T[CN_T][1].map(fila).join("") || `<tr><td colspan="7" class="muted">Nada por aquí.</td></tr>`}</tbody></table></div></section>`}`;
+  $("#cnLiq").onclick = liquidarAhora;
+  $("#view").onclick = async e => { const t = e.target.closest("[data-cnt]"), ok = e.target.closest("[data-ok]"), no = e.target.closest("[data-no]"), rec = e.target.closest("[data-rec]");
+    if (t) { CN_T = t.dataset.cnt; return VIEWS.cobrosNeg(); }
+    if (ok) { const l = L.find(x => x.id === ok.dataset.ok), ah = new Date().toISOString();
+      // Si ya no le queda nada vencido sin pagar, su tienda vuelve a aparecer
+      const resta = L.some(x => x.negocioId === l.negocioId && x.id !== l.id && x.estado === "pendiente" && x.vence && new Date(x.vence).getTime() < ahora);
+      await DB.batch([{ op: "set", col: "liquidaciones", id: l.id, data: { estado: "pagada", aprobado: ah, actualizado: ah } }, ...(resta ? [] : [{ op: "set", col: "negocios", id: l.negocioId, data: { bloqueoCobro: false } }])]);
+      toast(resta ? "✅ Aprobado (aún debe otras semanas)" : "✅ Pago aprobado · su tienda está visible"); return VIEWS.cobrosNeg(); }
+    if (no) return modal("El pago no llegó", fld("motivo", "Motivo (lo ve el negocio)", "No llegó el Yape", { full: true, opts: ["No llegó el Yape", "El monto no coincide", "La captura no es válida"] }), async d => {
+      await DB.set("liquidaciones", no.dataset.no, { estado: "pendiente", rechazo: d.motivo, actualizado: new Date().toISOString() }); toast("Pago rechazado: el negocio debe pagar otra vez"); VIEWS.cobrosNeg(); }, "Rechazar pago");
+    if (rec) { const l = L.find(x => x.id === rec.dataset.rec); abrirWA(l.whatsapp || neg(l.negocioId).whatsapp, `Hola ${l.negocio} 👋 te escribe Apamuy.\n\nTu comisión de la semana del ${semTxt(l)} es *${S(l.total)}* (${l.pedidos} pedidos, ventas ${S(l.ventasTotal)}).\nVence el ${fmtF(l.vence, { weekday: "long", day: "numeric", month: "short" })}.\n\nPágala desde tu panel → «Comisión Apamuy» → 💰 Pagar mi comisión. ¡Gracias!`); }
+  };
+};
+// Liquida la semana pasada a mano (normalmente lo hace el servidor solo cada lunes). No duplica: si ya existe, la salta.
+async function liquidarAhora() {
+  const desde = addD(lunesDe(HOY()), -7), hasta = addD(desde, 6), meses = [...new Set([desde.slice(0, 7), hasta.slice(0, 7)])];
+  const [ps, ns, acum, ya] = await Promise.all([Promise.all(meses.map(m => DB.list("pedidos", ["mes", "==", m]))).then(x => x.flat()), DB.list("negocios"), DB.list("liquidaciones", ["estado", "==", "acumulada"]), DB.list("liquidaciones", ["semana", "==", desde])]);
+  const nuevas = calcLiquidaciones(desde, ps, ns, acum.filter(a => a.semana < desde), CONF.comision).filter(x => !ya.some(y => y.id === x.id));
+  if (!nuevas.length) return toast(`La semana del ${fmtF(desde)} al ${fmtF(hasta)} ya está liquidada (o no hubo ventas).`);
+  await DB.batch(nuevas.flatMap(x => [{ op: "set", col: "liquidaciones", id: x.id, merge: false, data: x.data }, ...x.ant.map(id => ({ op: "set", col: "liquidaciones", id, data: { estado: "sumada", sumadaEn: x.id } }))]));
+  toast(`✅ ${nuevas.length} negocio(s) liquidados · ${nuevas.filter(x => x.data.estado === "pendiente").length} por pagar`); VIEWS.cobrosNeg();
+}
 
 /* ================= ADMIN · CLIENTES ================= */
 VIEWS.clientes = async () => {
