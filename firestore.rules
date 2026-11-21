@@ -164,6 +164,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Celulares que reciben avisos (token de notificaciones). Solo los lee el servidor; cada uno registra el suyo.
+    match /fcm/{token} {
+      allow create, update: if logueado() && d().uid == request.auth.uid && d().app in ['web', 'panel', 'rep']
+        && d().keys().hasOnly(['uid', 'app', 'email', 'ua', 'actualizado']) && (!('email' in d()) || d().email == request.auth.token.email);
+      allow delete: if logueado() && resource.data.uid == request.auth.uid;
+      allow read: if false;
+    }
+
     // Libro de Reclamaciones virtual: cualquiera puede dejar su hoja (sin cuenta). Numeración correlativa. Solo el admin las lee.
     match /contadores/{id} {
       allow get: if id == 'reclamos';

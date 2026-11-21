@@ -126,13 +126,22 @@ function formNegocio(box, n) {
 }
 
 /* ================= ESTRUCTURA DEL PANEL ================= */
+// Aviso para activar las notificaciones: que suene cada pedido aunque el panel esté cerrado
+function bannerAvisos() {
+  const e = estadoAvisos(); if (e === "demo") return;
+  if (window.Notification?.permission === "granted") { activarAvisos("panel", true); return; }   // renueva en silencio
+  if (store.get("am_noavisos", 0) > Date.now()) return;
+  $("#banner").insertAdjacentHTML("beforeend", `<div class="alert av-b" id="avB">${ico("bell")} <span><b>Activa los avisos:</b> ${ADMIN ? "te avisamos de negocios, repartidores, pagos y reclamos nuevos" : "te sonará cada pedido nuevo aunque cierres el panel"}.</span><button class="btn btn-pri btn-sm" id="avOk">Activar</button><button class="btn btn-light btn-sm" id="avNo">Ahora no</button></div>`);
+  $("#avOk").onclick = async () => { $("#avOk").disabled = true; const r = await activarAvisos("panel"); toast(textoAvisos(r), r !== "ok"); if (r === "ok") $("#avB").remove(); else $("#avOk").disabled = false; };
+  $("#avNo").onclick = () => { store.set("am_noavisos", Date.now() + 864e5); $("#avB").remove(); };
+}
 function armar(nav, inicio) {
   document.body.innerHTML = `<div class="shell"><aside class="side" id="side"><div class="s-brand"><img class="s-logo" src="favicon.svg" alt=""><div><b></b><small>${ADMIN ? "Administrador" : "Panel del negocio"}</small></div></div>
       <nav class="s-nav">${nav.map(([k, i, t]) => `<button data-v="${k}">${ico(i)}<span>${t}</span><b class="cnt" id="cnt-${k}" hidden></b></button>`).join("")}</nav>
       <div class="s-user"><small>Sesión</small><b>${esc(YO.email)}</b>${DEMO ? `<span class="st warn">MODO DEMO</span>` : ""}<button class="btn btn-light btn-sm" id="salir">${ico("logout")} Salir</button></div></aside>
     <div class="main"><header class="tb"><button class="tb-m" id="menuB" aria-label="Menú">${ico("menu")}</button><span class="tb-f">${fmtF(HOY(), { weekday: "long", day: "numeric", month: "long" })}</span>
       ${!ADMIN && NEG.estado === "activo" ? `<button class="btn btn-sm tb-ab" id="abierto"></button>` : ""}</header><div id="banner"></div><main id="view" class="view" tabindex="-1"></main></div></div>`;
-  marcaPanel(); pintarAbierto(); bannerEstado();
+  marcaPanel(); pintarAbierto(); bannerEstado(); bannerAvisos();
   $(".s-nav").onclick = e => { const b = e.target.closest("[data-v]"); if (b) go(b.dataset.v); };
   $("#salir").onclick = () => Sesion.salir(); $("#menuB").onclick = () => $("#side").classList.toggle("open");
   $("#abierto")?.addEventListener("click", cambiarAbierto);
@@ -235,7 +244,8 @@ const campoTam = p => p.entrega === "delivery" && envioGrande(NEG.rubro) ? `<spa
 function opOferta(p, veh, tiempo, n = NEG) {
   const z = p.destino ? ciudadCercana(p.destino) : null;
   return [{ op: "set", col: "ofertas", id: p.id, merge: false, data: { codigo: p.codigo, negocioId: n.id, prov: n.prov, negocio: { nombre: n.nombre, direccion: n.direccion || "", ubic: n.ubic || null, telefono: n.telefono || "" },
-      zona: z ? z.dis : "", km: p.km ?? null, envio: +p.envio || 0, pago: p.pago, vehiculo: veh || "todos", tiempo: tiempo || p.tiempo || null, estado: "libre", creado: new Date().toISOString(), dia: HOY() } },
+      zona: z ? z.dis : "", zonaUbic: p.destino ? { lat: Math.round(p.destino.lat * 100) / 100, lng: Math.round(p.destino.lng * 100) / 100 } : null,   // zona aprox. (~1 km), no la casa
+      km: p.km ?? null, envio: +p.envio || 0, pago: p.pago, vehiculo: veh || "todos", tiempo: tiempo || p.tiempo || null, estado: "libre", creado: new Date().toISOString(), dia: HOY() } },
     { op: "set", col: "pedidos", id: p.id, data: { oferta: true, vehiculo: veh || "todos" } }];
 }
 const cerrarOferta = p => p.oferta ? [{ op: "set", col: "ofertas", id: p.id, data: { estado: "cerrada" } }] : [];
@@ -474,6 +484,7 @@ VIEWS.config = async () => {
       ${fld("eMax", "Distancia máxima (km)", c.envio.maxKm, { type: "number", extra: 'min="1" step="1"' })}<div class="fld"><span>Ejemplo sugerido</span><b id="ejE"></b></div></div>
     <h2>${ico("qr")} Tu Yape (aquí te pagan repartidores)</h2><div class="g2">${fld("cYape", "Número de Yape", c.cobro.yape || "")}${fld("cTit", "A nombre de", c.cobro.titular || "")}
       <div class="fld full"><span>QR de Yape</span><div class="foto-up"><span class="fp-yapeQR" id="cQrV" style="background-image:url('${esc(imgUrl(c.cobro.qr))}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir QR<input type="file" accept="image/*" id="cQr" hidden></label></div></div></div>
+    <h2>${ico("bell")} Avisos al celular (notificaciones)</h2>${fld("vapid", "Clave pública de notificaciones (VAPID)", c.vapid || "", { full: true, ph: "Empieza con B… (Firebase → Configuración del proyecto → Cloud Messaging → Certificados web push)", help: "Es pública: no es una contraseña. Sin ella no se pueden activar los avisos." })}
     <h2>${ico("wa")} Soporte</h2>${fld("soporte", "WhatsApp de soporte de Apamuy", c.soporte || "")}
     <div class="f-end"><button class="btn btn-pri">${ico("check")} Guardar</button></div></form>`;
   const F = $("#cF"), ej = () => { const x = { base: +F.base.value || 0, porKm: +F.porKm.value || 0, maxKm: +F.maxKm.value || 1 }; $("#ej").textContent = `1 km: ${S(costoDelivery(1, x))} · 3 km: ${S(costoDelivery(3, x))} · 5 km: ${S(costoDelivery(5, x))}`;
@@ -481,7 +492,7 @@ VIEWS.config = async () => {
   F.oninput = ej; ej(); mapaPin($("#cMapa"), pos, q => pos = q); let QR = c.cobro.qr || "";
   $("#cQr").onchange = async e => { const f = e.target.files[0]; if (!f) return; QR = await redimensionar(f, 600, .9, "image/png"); $("#cQrV").style.backgroundImage = `url('${QR}')`; };
   F.onsubmit = async e => { e.preventDefault(); const v = datosForm(F);
-    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 8 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""),
+    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 8 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""), vapid: (v.vapid || "").trim(),
       rep: { comision: +v.repCom || 0, casaca: +v.casaca || 0 }, envio: { minimo: +v.eMin || 5, base: +v.eBase || 0, porKm: +v.ePorKm || 0, factorGrande: +v.eGrande || 1, maxKm: +v.eMax || 300 }, cobro: { yape: v.cYape, titular: v.cTit, qr: await subirFoto(`web/cobro/yape-${Date.now().toString(36)}.png`, QR) } });
     await cargarConfig(); toast("Configuración guardada"); };
 };
