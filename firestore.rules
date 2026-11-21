@@ -114,7 +114,7 @@ service cloud.firestore {
       allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || admin()
         || (exists(/databases/$(database)/documents/negocios/$(request.auth.uid)) && miNeg().estado == 'activo' && miNeg().prov == resource.data.prov));
       allow create: if logueado() && d().clienteUid == request.auth.uid && d().codigo == sid && d().estado == 'abierta'
-        && d().tipo in ['repuesto', 'auxilio'] && d().texto is string && d().texto.size() <= 300 && d().rubros is list && d().rubros.size() <= 3
+        && d().tipo in ['repuesto', 'auxilio'] && d().texto is string && d().texto.size() <= 300 && d().rubros is list && d().rubros.size() <= 10
         && (!('foto' in d()) || (d().foto is string && d().foto.size() < 300000))
         && d().keys().hasOnly(['codigo', 'tipo', 'clienteUid', 'cliente', 'prov', 'rubros', 'texto', 'problema', 'foto', 'vehiculo', 'zona', 'ubic', 'estado', 'vence', 'creado', 'dia', 'mes']);
       // El cliente la cancela, o elige una tienda (en la misma operación crea su pedido en esa tienda)

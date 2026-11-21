@@ -46,7 +46,7 @@ function pantallaLogin(modo = "entrar") {
     NEG = await DB.get("negocios", u.uid).catch(() => null);
     if (!NEG) return pantallaRegistro();
     // Ferreterías y talleres: reciben las búsquedas de repuestos (y los talleres, el auxilio mecánico)
-    const nav = BQ_RUBROS.includes(NEG.rubro) ? NAV_NEG.flatMap(x => x[0] === "pedidos" ? [x, ["solicitudes", "search", NEG.rubro === "talleres" ? "Repuestos y auxilio" : "Buscan repuestos"]] : [x]) : NAV_NEG;
+    const nav = recibeBusq(NEG.rubro) || NEG.rubro === "talleres" ? NAV_NEG.flatMap(x => x[0] === "pedidos" ? [x, ["solicitudes", "search", NEG.rubro === "talleres" ? "Repuestos y auxilio" : "Buscan repuestos"]] : [x]) : NAV_NEG;
     armar(nav, "inicio");
   });
 })();
@@ -152,7 +152,7 @@ function armar(nav, inicio) {
   $("#salir").onclick = () => Sesion.salir(); $("#menuB").onclick = () => $("#side").classList.toggle("open");
   $("#abierto")?.addEventListener("click", cambiarAbierto);
   document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go); });
-  go(inicio); if (!ADMIN && NEG.estado === "activo") { vigilar(); if (BQ_RUBROS.includes(NEG.rubro)) vigilarSol(); } if (ADMIN) vigilarAdm();
+  go(inicio); if (!ADMIN && NEG.estado === "activo") { vigilar(); if (recibeBusq(NEG.rubro) || NEG.rubro === "talleres") vigilarSol(); } if (ADMIN) vigilarAdm();
 }
 function marcaPanel() { const b = $(".s-brand"); if (!b) return; b.querySelector("b").textContent = ADMIN ? "Apamuy" : NEG.nombre; if (!ADMIN && NEG.logo) b.querySelector("img").src = NEG.logo; }
 function bannerEstado() {
@@ -189,7 +189,7 @@ function vigilar() {
 
 /* ================= NEGOCIO · 🔍 BUSCAN REPUESTOS y 🚨 AUXILIO =================
    Al cliente le llega lo que respondas: precio, calidad, nota y foto. Si te elige, te llega como pedido normal. */
-const BQ_RUBROS = ["ferreteria", "talleres"], AUX_KM = 30;
+const AUX_KM = 30;
 let SOLS = [], SOLS_T = [], VSOL = null, MISR = {};
 const solVisible = s => s.rubros && s.rubros.includes(NEG.rubro) && new Date(s.vence) > Date.now() && s.clienteUid !== NEG.id
   && (s.tipo !== "auxilio" || (NEG.ubic && s.ubic && distanciaKm(NEG.ubic, s.ubic) <= AUX_KM));
@@ -631,7 +631,7 @@ VIEWS.rubros = async () => {
   await cargarRubros(true); const ns = await DB.list("negocios");
   $("#view").innerHTML = topBar("Rubros", "Las categorías grandes de Apamuy, con su imagen. Agrega las que quieras para que la plataforma crezca.", `<button class="btn btn-pri btn-sm" id="nR">${ico("plus")} Rubro</button>`) + `
     <section class="card"><div class="rb-grid">${RUBROS.map((r, i) => `<div class="rb-c ${r.activo === false ? "off" : ""}"><span class="rb-i" style="background:${esc(r.color || "#FFF1E6")}">${r.imagen ? `<img src="${esc(imgUrl(r.imagen))}" alt="">` : ""}</span>
-      <div><b>${esc(r.nombre)}</b><small>${r.modo === "servicios" ? "🔧 Servicios" : "🛍️ Productos"}${r.mayorEdad ? " · 🔞 +18" : ""}${envioGrande(r.id) ? " · 🚗 envío grande" : ""}${r.requiereRegistro ? " · 📄 registro" : ""} · ${ns.filter(n => (n.rubro || "comida") === r.id).length} negocio(s)${r.activo === false ? " · oculto" : ""}</small></div>
+      <div><b>${esc(r.nombre)}</b><small>${r.modo === "servicios" ? "🔧 Servicios" : "🛍️ Productos"}${r.mayorEdad ? " · 🔞 +18" : ""}${envioGrande(r.id) ? " · 🚗 envío grande" : ""}${recibeBusq(r.id) ? " · 🔍 recibe búsquedas" : ""}${r.requiereRegistro ? " · 📄 registro" : ""} · ${ns.filter(n => (n.rubro || "comida") === r.id).length} negocio(s)${r.activo === false ? " · oculto" : ""}</small></div>
       <div class="rb-a"><button class="btn btn-light btn-xs" data-up="${i}" ${i ? "" : "disabled"} aria-label="Subir">▲</button><button class="btn btn-light btn-xs" data-dn="${i}" ${i < RUBROS.length - 1 ? "" : "disabled"} aria-label="Bajar">▼</button><button class="btn btn-light btn-sm" data-er="${esc(r.id)}">${ico("edit")}</button></div></div>`).join("")
       || vacio("Aún no hay rubros. Ve a «Página web» → Cargar ejemplos, o crea el primero.")}</div></section>`;
   const form = r => { let IMG = r?.imagen || "";
@@ -639,11 +639,11 @@ VIEWS.rubros = async () => {
       ${fld("nombre", "Nombre", r?.nombre || "", { req: true, ph: "Ej. Mascotas" })}${fld("color", "Color de fondo", r?.color || "#FFF1E6", { type: "color" })}
       ${fld("modo", "¿Qué ofrecen?", r?.modo || "productos", { opts: [["productos", "Productos (se piden y se entregan)"], ["servicios", "Servicios (el cliente solicita y el negocio lo llama)"]] })}
       ${fld("tipos", "Tipos de negocio (uno por línea)", (r?.tipos || []).join("\n"), { type: "textarea", rows: 4, full: true })}
-      ${fld("mayorEdad", "Solo mayores de 18 (licor, cigarros…)", !!r?.mayorEdad, { type: "checkbox" })}${fld("envioGrande", "Envío grande: va en carro (si el pedido es pequeño, solo en moto)", r ? envioGrande(r.id) : false, { type: "checkbox" })}${fld("activo", "Visible en la web", r ? r.activo !== false : true, { type: "checkbox" })}
+      ${fld("mayorEdad", "Solo mayores de 18 (licor, cigarros…)", !!r?.mayorEdad, { type: "checkbox" })}${fld("envioGrande", "Envío grande: va en carro (si el pedido es pequeño, solo en moto)", r ? envioGrande(r.id) : false, { type: "checkbox" })}${fld("buscaRepuestos", "Recibe «Buscar repuesto» (los clientes les preguntan precios)", r ? recibeBusq(r.id) : false, { type: "checkbox" })}${fld("activo", "Visible en la web", r ? r.activo !== false : true, { type: "checkbox" })}
       ${fld("requiereRegistro", "Registro que debe dar el negocio (vacío = ninguno)", r?.requiereRegistro || "", { full: true, ph: "Ej. N° de registro DIGEMID" })}${fld("aviso", "Aviso para los clientes (vacío = ninguno)", r?.aviso || "", { full: true })}</div>`, async d => {
       const id = r?.id || slug(d.nombre) || "rubro-" + Date.now().toString(36); if (!r && RUBROS.find(x => x.id === id)) { toast("Ya existe un rubro con ese nombre", true); return false; }
       const imagen = await subirFoto(`web/rubros/${id}-${Date.now().toString(36)}.png`, IMG);
-      await DB.set("rubros", id, { nombre: d.nombre, color: d.color, modo: d.modo, tipos: d.tipos.split("\n").map(x => x.trim()).filter(Boolean), mayorEdad: d.mayorEdad, envioGrande: d.envioGrande, activo: d.activo, requiereRegistro: d.requiereRegistro, aviso: d.aviso, imagen, orden: r?.orden ?? RUBROS.length });
+      await DB.set("rubros", id, { nombre: d.nombre, color: d.color, modo: d.modo, tipos: d.tipos.split("\n").map(x => x.trim()).filter(Boolean), mayorEdad: d.mayorEdad, envioGrande: d.envioGrande, buscaRepuestos: d.buscaRepuestos, activo: d.activo, requiereRegistro: d.requiereRegistro, aviso: d.aviso, imagen, orden: r?.orden ?? RUBROS.length });
       toast("Rubro guardado · ya se ve en la web"); VIEWS.rubros(); }, "Guardar", { wide: true, alAbrir: () => {
       $("#rFile").onchange = async e => { const f = e.target.files[0]; if (!f) return; IMG = await redimensionar(f, 300, .9, "image/png"); $("#rPrev").style.backgroundImage = `url('${IMG}')`; }; } }); };
   $("#nR").onclick = () => form();
