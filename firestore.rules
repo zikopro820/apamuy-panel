@@ -107,6 +107,39 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
+    // 🔍 Buscar repuesto / 🚨 Auxilio: el cliente pregunta y las ferreterías y talleres de SU provincia responden.
+    // Sin nombre completo ni celular del cliente (eso solo lo ve la tienda que elige, en el pedido).
+    match /solicitudes/{sid} {
+      function miNeg() { return get(/databases/$(database)/documents/negocios/$(request.auth.uid)).data; }
+      allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || admin()
+        || (exists(/databases/$(database)/documents/negocios/$(request.auth.uid)) && miNeg().estado == 'activo' && miNeg().prov == resource.data.prov));
+      allow create: if logueado() && d().clienteUid == request.auth.uid && d().codigo == sid && d().estado == 'abierta'
+        && d().tipo in ['repuesto', 'auxilio'] && d().texto is string && d().texto.size() <= 300 && d().rubros is list && d().rubros.size() <= 3
+        && (!('foto' in d()) || (d().foto is string && d().foto.size() < 300000))
+        && d().keys().hasOnly(['codigo', 'tipo', 'clienteUid', 'cliente', 'prov', 'rubros', 'texto', 'problema', 'foto', 'vehiculo', 'zona', 'ubic', 'estado', 'vence', 'creado', 'dia', 'mes']);
+      // El cliente la cancela, o elige una tienda (en la misma operación crea su pedido en esa tienda)
+      allow update: if logueado() && resource.data.clienteUid == request.auth.uid && (
+          (resource.data.estado == 'abierta' && d().estado == 'cancelada' && soloCambia(['estado', 'actualizado']))
+          || (resource.data.estado in ['abierta', 'cerrada'] && d().estado == 'elegida' && soloCambia(['estado', 'elegida', 'pedido', 'actualizado'])
+              && getAfter(/databases/$(database)/documents/pedidos/$(d().pedido)).data.solicitud == sid
+              && getAfter(/databases/$(database)/documents/pedidos/$(d().pedido)).data.negocioId == d().elegida
+              && getAfter(/databases/$(database)/documents/pedidos/$(d().pedido)).data.clienteUid == request.auth.uid));
+      allow delete: if false;
+
+      // «Sí tengo»: una respuesta por negocio (id = uid del negocio)
+      match /respuestas/{nid} {
+        function sol() { return get(/databases/$(database)/documents/solicitudes/$(sid)).data; }
+        function neg() { return get(/databases/$(database)/documents/negocios/$(nid)).data; }
+        allow read: if logueado() && (request.auth.uid == nid || admin() || sol().clienteUid == request.auth.uid);
+        allow create, update: if logueado() && request.auth.uid == nid && d().negocioId == nid && sol().estado == 'abierta'
+          && neg().estado == 'activo' && neg().prov == sol().prov && neg().rubro in sol().rubros
+          && d().precio is number && d().precio > 0 && d().precio < 100000
+          && (!('foto' in d()) || (d().foto is string && d().foto.size() < 300000))
+          && d().keys().hasOnly(['negocioId', 'negocio', 'precio', 'calidad', 'nota', 'foto', 'llegaMin', 'creado', 'actualizado']);
+        allow delete: if logueado() && request.auth.uid == nid;
+      }
+    }
+
     // Envíos de paquetes: el cliente pone el precio; los repartidores aceptan o contraofertan
     match /envios/{eid} {
       function cliente() { return logueado() && resource.data.clienteUid == request.auth.uid; }
@@ -203,7 +236,7 @@ service cloud.firestore {
       allow create: if logueado() && d().clienteUid == request.auth.uid && d().codigo == pid
         && get(/databases/$(database)/documents/negocios/$(d().negocioId)).data.estado == 'activo'
         && d().keys().hasOnly(['codigo', 'negocioId', 'negocio', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'km', 'total', 'entrega', 'destino', 'nota',
-             'pago', 'operacion', 'montoLeido', 'coincide', 'fechaOk', 'pagaCon', 'captura', 'estado', 'dia', 'mes', 'creado', 'servicio', 'mayorEdad'])
+             'pago', 'operacion', 'montoLeido', 'coincide', 'fechaOk', 'pagaCon', 'captura', 'estado', 'dia', 'mes', 'creado', 'servicio', 'mayorEdad', 'solicitud'])
         && d().estado in ['nuevo', 'por-validar'] && (d().estado == 'nuevo') == (d().pago in ['Efectivo', 'A coordinar'])
         && d().entrega in ['delivery', 'recojo', 'servicio']
         && d().items is list && d().items.size() > 0 && d().items.size() <= 60

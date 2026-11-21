@@ -45,7 +45,9 @@ function pantallaLogin(modo = "entrar") {
     if (ADMIN) return armar(NAV_ADM, "resumen");
     NEG = await DB.get("negocios", u.uid).catch(() => null);
     if (!NEG) return pantallaRegistro();
-    armar(NAV_NEG, "inicio");
+    // Ferreterías y talleres: reciben las búsquedas de repuestos (y los talleres, el auxilio mecánico)
+    const nav = BQ_RUBROS.includes(NEG.rubro) ? NAV_NEG.flatMap(x => x[0] === "pedidos" ? [x, ["solicitudes", "search", NEG.rubro === "talleres" ? "Repuestos y auxilio" : "Buscan repuestos"]] : [x]) : NAV_NEG;
+    armar(nav, "inicio");
   });
 })();
 
@@ -74,6 +76,7 @@ function formNegocio(box, n) {
     <h2>${ico("clock")} Horario y entrega</h2><div class="g2">${fld("abre", "Abre", a.abre, { type: "time" })}${fld("cierra", "Cierra", a.cierra, { type: "time", help: "Si cierra pasada la medianoche también funciona." })}
       <div class="full"><span class="lbl">Días de atención</span><div class="dias-ck">${DIAS.map((t, i) => `<label class="chk"><input type="checkbox" name="dia${i}" ${(a.dias || []).includes(i) ? "checked" : ""}><span>${t}</span></label>`).join("")}</div></div>
       ${fld("delivery", "Hacer delivery (con repartidores Apamuy)", a.delivery !== false, { type: "checkbox" })}${fld("recojo", "Permitir recojo en el local", a.recojo !== false, { type: "checkbox" })}
+      <label class="fld"><span>Llevo delivery hasta (km)</span><input name="radioKm" type="number" min="1" step="1" value="${esc(a.radioKm || "")}" placeholder="Máximo"><small id="nRadioH"></small></label>
       ${fld("tiempo", "Tiempo que se muestra", a.tiempo || "", { ph: "30-40 min" })}${fld("pedidoMinimo", "Pedido mínimo para delivery (S/)", a.pedidoMinimo ?? 0, { type: "number", extra: 'min="0"' })}
       ${fld("extras", "Extras gratis (uno por línea, ej. cremas)", (a.extrasGratis || []).join("\n"), { type: "textarea", full: true, rows: 3, ph: "Mayonesa\nAjí\nKetchup" })}</div>
     <h2>${ico("cash")} Cómo te pagan los clientes</h2><p class="muted sm">El cliente te paga la comida <b>directo a ti</b>. El delivery lo cobra el repartidor.</p><div class="g2">
@@ -97,7 +100,10 @@ function formNegocio(box, n) {
   const sRub = $("[name=rubro]", F), sTipo = $("#nTipo", F);
   const ponerRubro = () => { const r = rubroDe(sRub.value), ts = r.tipos && r.tipos.length ? r.tipos : ["General"]; sTipo.innerHTML = opt(ts, ts.includes(a.tipo) ? a.tipo : ts[0]);
     $("#nRegL", F).hidden = !r.requiereRegistro; $("#nRegT", F).textContent = (r.requiereRegistro || "Registro") + " *"; };
-  sRub.onchange = ponerRubro; ponerRubro();
+  // Radio de delivery: cada negocio pone el suyo, sin pasar el máximo de Apamuy para su rubro
+  const ponerRadio = () => { const m = maxKmRubro(sRub.value), i = $("[name=radioKm]", F); i.max = m; i.placeholder = `${m} (máximo)`;
+    $("#nRadioH", F).textContent = `Hasta ${m} km para tu rubro. Vacío = ${m} km. Los clientes más lejos te verán en «Más lejos · solo para recoger».`; };
+  sRub.onchange = () => { ponerRubro(); ponerRadio(); }; ponerRubro(); ponerRadio();
   $$("[data-img]", F).forEach(i => i.onchange = async e => { const f = e.target.files[0], k = e.target.dataset.img; if (!f) return; IMG[k] = await redimensionar(f, +e.target.dataset.w, .8, k.endsWith("QR") ? "image/png" : "image/jpeg"); $("#pv_" + k).style.backgroundImage = `url('${IMG[k]}')`; });
   F.onsubmit = async e => {
     e.preventDefault(); err.textContent = ""; const d = datosForm(F);
@@ -115,7 +121,7 @@ function formNegocio(box, n) {
       const up = {}; for (const k of Object.keys(IMG)) up[k] = await subirFoto(`negocios/${YO.uid}/${k}-${Date.now().toString(36)}.${k.endsWith("QR") ? "png" : "jpg"}`, IMG[k]);
       const wsp = d.whatsapp.replace(/\D/g, "") || d.telefono.replace(/\D/g, "");
       const data = { nombre: d.nombre, rubro: d.rubro, tipo: d.tipo, registro: rubroDe(d.rubro).requiereRegistro ? d.registro : "", departamento: d.departamento, provincia: d.provincia, distrito: d.distrito, prov: provKey(d.departamento, d.provincia), descripcion: d.descripcion, telefono: d.telefono.replace(/\D/g, ""), whatsapp: wsp.length === 9 ? "51" + wsp : wsp, direccion: d.direccion, referencia: d.referencia, ubic: pos,
-        abre: d.abre, cierra: d.cierra, dias, delivery: d.delivery, recojo: d.recojo, tiempo: d.tiempo, pedidoMinimo: +d.pedidoMinimo || 0, extrasGratis: d.extras.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 20),
+        abre: d.abre, cierra: d.cierra, dias, delivery: d.delivery, recojo: d.recojo, radioKm: +d.radioKm > 0 ? Math.min(Math.round(+d.radioKm), maxKmRubro(d.rubro)) : 0, tiempo: d.tiempo, pedidoMinimo: +d.pedidoMinimo || 0, extrasGratis: d.extras.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 20),
         pagoYape: d.pagoYape, pagoPlin: d.pagoPlin, contraEntrega: d.contraEntrega, yapeNum: d.yapeNum, yapeTitular: d.yapeTitular, plinNum: d.plinNum, plinTitular: d.plinTitular, pagoTransf: false,
         documento: { tipo: d.docTipo, numero: d.docNum, nombre: d.docNombre }, ...up, actualizado: new Date().toISOString() };
       if (!n) Object.assign(data, { owner: YO.uid, email: YO.email, estado: "pendiente", creado: new Date().toISOString(), aceptoComision: pctDe(null) });
@@ -146,7 +152,7 @@ function armar(nav, inicio) {
   $("#salir").onclick = () => Sesion.salir(); $("#menuB").onclick = () => $("#side").classList.toggle("open");
   $("#abierto")?.addEventListener("click", cambiarAbierto);
   document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) go(g.dataset.go); });
-  go(inicio); if (!ADMIN && NEG.estado === "activo") vigilar(); if (ADMIN) vigilarAdm();
+  go(inicio); if (!ADMIN && NEG.estado === "activo") { vigilar(); if (BQ_RUBROS.includes(NEG.rubro)) vigilarSol(); } if (ADMIN) vigilarAdm();
 }
 function marcaPanel() { const b = $(".s-brand"); if (!b) return; b.querySelector("b").textContent = ADMIN ? "Apamuy" : NEG.nombre; if (!ADMIN && NEG.logo) b.querySelector("img").src = NEG.logo; }
 function bannerEstado() {
@@ -181,6 +187,57 @@ function vigilar() {
   });
 }
 
+/* ================= NEGOCIO · 🔍 BUSCAN REPUESTOS y 🚨 AUXILIO =================
+   Al cliente le llega lo que respondas: precio, calidad, nota y foto. Si te elige, te llega como pedido normal. */
+const BQ_RUBROS = ["ferreteria", "talleres"], AUX_KM = 30;
+let SOLS = [], SOLS_T = [], VSOL = null, MISR = {};
+const solVisible = s => s.rubros && s.rubros.includes(NEG.rubro) && new Date(s.vence) > Date.now() && s.clienteUid !== NEG.id
+  && (s.tipo !== "auxilio" || (NEG.ubic && s.ubic && distanciaKm(NEG.ubic, s.ubic) <= AUX_KM));
+function filtrarSol() {
+  const antes = new Set(SOLS.map(s => s.id)); SOLS = SOLS_T.filter(solVisible).sort((a, b) => String(b.creado).localeCompare(a.creado));
+  const sin = SOLS.filter(s => !MISR[s.id]).length, b = $("#cnt-solicitudes"); if (b) { b.textContent = sin; b.hidden = !sin; }
+  const nuevas = VSOL ? SOLS.filter(s => !antes.has(s.id) && !VSOL.has(s.id)) : []; VSOL = new Set([...(VSOL || []), ...SOLS.map(s => s.id)]);
+  if (nuevas.length) { beep(nuevas.some(s => s.tipo === "auxilio") ? 4 : 2); toast(nuevas[0].tipo === "auxilio" ? "🚨 ¡Piden auxilio mecánico cerca!" : "🔍 Un cliente busca: " + nuevas[0].texto.slice(0, 50)); }
+  if (VISTA === "solicitudes" && !$("#modal.open")) VIEWS.solicitudes(true);
+}
+function vigilarSol() {
+  MISR = store.get("am_misr_" + NEG.id, {});
+  DB.escucharLista("solicitudes", [["prov", "==", NEG.prov], ["estado", "==", "abierta"]], l => { SOLS_T = l; filtrarSol(); });
+  setInterval(filtrarSol, 20000);   // se van las que vencen
+}
+VIEWS.solicitudes = async () => {
+  const aux = NEG.rubro === "talleres", resta = s => Math.max(0, Math.round((new Date(s.vence) - Date.now()) / 60000));
+  $("#view").innerHTML = topBar(aux ? "Repuestos y auxilio" : "Clientes buscando repuestos", `Clientes de tu provincia preguntan por algo. Si lo tienes, responde con tu precio: el cliente compara y elige. Si te elige, te llega como pedido.${aux ? ` El auxilio llega de clientes a ${AUX_KM} km o menos.` : ""}`)
+    + (SOLS.length ? `<div class="sols">${SOLS.map(s => { const m = MISR[s.id], km = NEG.ubic && s.ubic ? distanciaKm(NEG.ubic, s.ubic) : null;
+      return `<article class="card sol ${s.tipo === "auxilio" ? "aux" : ""} ${m ? "resp" : ""}"><div class="sol-h"><span class="st ${s.tipo === "auxilio" ? "bad" : "warn"}">${s.tipo === "auxilio" ? "🚨 Auxilio mecánico" : "🔍 Busca"}</span><small>${hace(s.creado)} · quedan ${resta(s)} min</small></div>
+        <div class="sol-b">${s.foto ? `<img src="${esc(s.foto)}" alt="" class="sol-f">` : ""}<div><h3>${esc(s.texto)}</h3>
+          <p class="muted sm">${s.vehiculo ? `${esc(vehTxtSol(s.vehiculo))} · ` : ""}👤 ${esc(s.cliente || "Cliente")}${s.zona ? ` · 📍 ${esc(s.zona)}` : ""}${km != null ? ` · a ~${km < 10 ? km.toFixed(1) : Math.round(km)} km de tu local` : ""}</p></div></div>
+        ${m ? `<div class="alert ok sm">${ico("check")} <span>Respondiste <b>${S(m.precio)}</b>${m.llegaMin ? ` · llegas en ~${m.llegaMin} min` : ""}. Si el cliente te elige, te llega a «Pedidos».</span></div>` : ""}
+        <div class="acts-g"><button class="btn ${m ? "btn-light" : "btn-pri"}" data-sol="${esc(s.id)}">${m ? `${ico("edit")} Cambiar mi respuesta` : s.tipo === "auxilio" ? "🚨 Puedo ir" : "✋ Sí tengo"}</button></div></article>`; }).join("")}</div>`
+      : `<div class="card">${vacio(`Ahora no hay clientes buscando. Cuando alguien pregunte${aux ? " o pida auxilio cerca" : ""}, suena y aparece aquí.`)}</div>`);
+  $("#view").onclick = e => { const b = e.target.closest("[data-sol]"); if (b) responderSol(SOLS.find(s => s.id === b.dataset.sol)); };
+};
+const vehTxtSol = v => [{ moto: "🛵 Moto", mototaxi: "🛺 Mototaxi", auto: "🚗 Auto", camioneta: "🛻 Camioneta", camion: "🚚 Camión", otro: "Vehículo" }[v.tipo] || v.tipo, v.modelo, v.anio].filter(Boolean).join(" ");
+function responderSol(s) {
+  if (!s) return; const aux = s.tipo === "auxilio", m = MISR[s.id] || {}; let FOTO = m.foto || "";
+  modal(aux ? "Puedo ir al auxilio" : "Sí tengo", `<p class="muted"><b>${esc(s.texto)}</b>${s.vehiculo ? `<br>${esc(vehTxtSol(s.vehiculo))}` : ""}</p><div class="g2">
+    ${fld("precio", aux ? "Precio estimado (S/)" : "Precio (S/)", m.precio ?? "", { type: "number", req: true, extra: 'min="0.5" step="0.5"' })}
+    ${aux ? fld("llegaMin", "¿En cuántos minutos llegas?", m.llegaMin ?? "", { type: "number", req: true, extra: 'min="5" max="240" step="5"' })
+      : fld("calidad", "Calidad", m.calidad || "Original", { opts: ["Original", "Alternativo", "Genérico", "Usado", "Nacional", "Importado"] })}
+    ${fld("nota", "Nota para el cliente", m.nota || "", { full: true, ph: aux ? "Ej. llevo gata y compresora" : "Ej. tengo 3 en stock, marca Bosch, con garantía" })}</div>
+    ${aux ? "" : `<div class="fld"><span>Foto del producto (opcional)</span><div class="foto-up"><span class="fp-logo" id="solFv" style="background-image:url('${esc(FOTO)}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir foto<input type="file" accept="image/*" id="solF" hidden></label></div></div>`}
+    <p class="muted sm">El cliente verá tu precio, el nombre de tu negocio y tu distrito. Su nombre completo y celular los ves si te elige.</p>`,
+    async d => {
+      if (!(+d.precio > 0)) { toast("Pon tu precio", true); return false; }
+      const r = { negocioId: NEG.id, negocio: { nombre: NEG.nombre, logo: NEG.logo || "", distrito: NEG.distrito || "", direccion: NEG.direccion || "", ubic: NEG.ubic || null, delivery: NEG.delivery !== false, recojo: NEG.recojo !== false, radioKm: NEG.radioKm || 0, rubro: NEG.rubro, prov: NEG.prov },
+        precio: Math.round(+d.precio * 10) / 10, calidad: aux ? "" : d.calidad, nota: (d.nota || "").slice(0, 200), foto: aux ? "" : FOTO, llegaMin: aux ? Math.round(+d.llegaMin) || null : null, creado: m.creado || new Date().toISOString(), actualizado: new Date().toISOString() };
+      await DB.set(`solicitudes/${s.id}/respuestas`, NEG.id, r, false);
+      MISR[s.id] = { precio: r.precio, calidad: r.calidad, nota: r.nota, foto: r.foto, llegaMin: r.llegaMin, creado: r.creado };
+      for (const k of Object.keys(MISR)) if (!SOLS_T.some(x => x.id === k)) delete MISR[k];   // limpia las viejas
+      store.set("am_misr_" + NEG.id, MISR); toast("✅ Respuesta enviada al cliente"); filtrarSol();
+    }, "Enviar respuesta", { alAbrir: F => { const i = $("#solF", F); if (i) i.onchange = async e => { const f = e.target.files[0]; if (!f) return; FOTO = await redimensionar(f, 700, .72); $("#solFv").style.backgroundImage = `url('${FOTO}')`; }; } });
+}
+
 /* ================= NEGOCIO · INICIO ================= */
 VIEWS.inicio = async () => {
   const hoy = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HOY()])).filter(p => !["anulado", "rechazado"].includes(p.estado));
@@ -205,8 +262,9 @@ VIEWS.pedidos = async silencioso => {
     const tarde = ACTIVOS.includes(p.estado) && m >= (p.tiempo ? +p.tiempo + 10 : 40);
     return `<article class="card ped ${esc(p.estado)} ${tarde ? "tarde" : ""}"><div class="ped-b"><div class="ped-h"><span class="ent">${p.entrega === "servicio" ? "🔧 Servicio" : p.entrega === "delivery" ? "🛵 Delivery" : "🏪 Recojo"}</span><span class="mono">${esc(p.codigo)}</span>${PT === "activos" ? `<span class="reloj ${tarde ? "neg" : ""}">${ico("clock")} ${m} min</span>` : estP(p.estado, p)}</div>
       <b class="ped-n">${esc(p.cliente.nombre)} <a class="tel" href="tel:${esc(p.cliente.celular)}">📞 ${esc(p.cliente.celular)}</a></b>${p.mayorEdad ? `<span class="st warn">🔞 Pedir DNI al entregar</span>` : ""}
-      ${p.servicio ? `<p class="ped-nota">🔧 ${esc(p.servicio.detalle)}<br><small>${p.servicio.lugar === "domicilio" ? "🏠 A domicilio" : "En el taller"}${p.servicio.fecha ? " · " + fmtFH(p.servicio.fecha) : ""}</small></p>` : ""}<ul class="ped-it">${(p.items || []).map(i => `<li><b>${i.cant}×</b> ${esc(i.n)}${detItem(i).map(d => `<small>${esc(d)}</small>`).join("")}</li>`).join("")}</ul>
-      ${p.nota ? `<p class="ped-nota">📝 ${esc(p.nota)}</p>` : ""}<p><b>Comida ${S(p.subtotal)}</b>${p.envio ? ` · delivery ${S(p.envio)}` : ""} · ${esc(p.pago)}${p.pagaCon ? ` · paga con ${S(p.pagaCon)} → vuelto ${S(p.pagaCon - p.total)}` : ""}${p.pagado ? ` <span class="st ok">Pagado</span>` : ""}</p>
+      ${p.servicio ? `<p class="ped-nota">🔧 ${esc(p.servicio.detalle)}<br><small>${p.servicio.auxilio ? `<b class="neg">🚨 AUXILIO MECÁNICO</b>${p.servicio.llegaMin ? ` · dijiste ~${p.servicio.llegaMin} min` : ""}` : p.servicio.lugar === "domicilio" ? "🏠 A domicilio" : "En el taller"}${p.servicio.fecha ? " · " + fmtFH(p.servicio.fecha) : ""}</small>
+        ${p.servicio.auxilio && p.destino ? `<br><a class="btn btn-pri btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.destino.lat},${p.destino.lng}">${ico("map")} Cómo llegar</a>${p.destino.referencia ? ` <small>📍 ${esc(p.destino.referencia)}</small>` : ""}` : ""}</p>` : ""}<ul class="ped-it">${(p.items || []).map(i => `<li><b>${i.cant}×</b> ${esc(i.n)}${detItem(i).map(d => `<small>${esc(d)}</small>`).join("")}</li>`).join("")}</ul>
+      ${p.nota ? `<p class="ped-nota">📝 ${esc(p.nota)}</p>` : ""}<p><b>${p.entrega === "servicio" ? "Precio" : (NEG.rubro || "comida") === "comida" ? "Comida" : "Productos"} ${S(p.subtotal)}</b>${p.envio ? ` · delivery ${S(p.envio)}` : ""} · ${esc(p.pago)}${p.pagaCon ? ` · paga con ${S(p.pagaCon)} → vuelto ${S(p.pagaCon - p.total)}` : ""}${p.pagado ? ` <span class="st ok">Pagado</span>` : ""}</p>
       ${p.entrega === "delivery" && p.destino ? `<p class="muted">📍 ${esc(p.destino.texto)}${p.destino.referencia ? " · " + esc(p.destino.referencia) : ""} · ${p.km} km · <a href="https://maps.google.com/?q=${p.destino.lat},${p.destino.lng}" target="_blank" rel="noopener">Ver mapa</a></p>` : ""}
       ${PT === "activos" ? lineaRep(p) : p.repartidor ? `<p class="rep-l">${vehTxt(p.repartidor.vehiculo)} ${esc(p.repartidor.nombre)}</p>` : ""}
       ${al.map(([c, t]) => `<div class="alert ${c} sm">${ico("alert")} ${t}</div>`).join("")}
@@ -245,7 +303,7 @@ function opOferta(p, veh, tiempo, n = NEG) {
   const z = p.destino ? ciudadCercana(p.destino) : null;
   return [{ op: "set", col: "ofertas", id: p.id, merge: false, data: { codigo: p.codigo, negocioId: n.id, prov: n.prov, negocio: { nombre: n.nombre, direccion: n.direccion || "", ubic: n.ubic || null, telefono: n.telefono || "" },
       zona: z ? z.dis : "", zonaUbic: p.destino ? { lat: Math.round(p.destino.lat * 100) / 100, lng: Math.round(p.destino.lng * 100) / 100 } : null,   // zona aprox. (~1 km), no la casa
-      km: p.km ?? null, envio: +p.envio || 0, pago: p.pago, vehiculo: veh || "todos", tiempo: tiempo || p.tiempo || null, estado: "libre", creado: new Date().toISOString(), dia: HOY() } },
+      km: p.km ?? null, envio: +p.envio || 0, pago: p.pago, vehiculo: veh || "todos", tiempo: tiempo || p.tiempo || null, anillos: anillosDe(n.rubro), estado: "libre", creado: new Date().toISOString(), dia: HOY() } },
     { op: "set", col: "pedidos", id: p.id, data: { oferta: true, vehiculo: veh || "todos" } }];
 }
 const cerrarOferta = p => p.oferta ? [{ op: "set", col: "ofertas", id: p.id, data: { estado: "cerrada" } }] : [];
@@ -473,7 +531,7 @@ VIEWS.config = async () => {
   await cargarConfig(); const c = CONF, d = c.delivery; let pos = c.centro;
   $("#view").innerHTML = topBar("Configuración de Apamuy", "Se aplica a toda la plataforma.") + `<form class="card" id="cF">
     <h2>${ico("percent")} Comisión</h2><div class="g2">${fld("comision", "Comisión general (% de la comida)", c.comision, { type: "number", extra: 'min="0" max="50" step="0.5"', help: "A cada negocio le puedes poner otro % en «Negocios»." })}</div>
-    <h2>${ico("bike")} Costo del delivery (lo cobra el repartidor)</h2><div class="g2">${fld("base", "Tarifa base (primer km) S/", d.base, { type: "number", extra: 'min="0" step="0.5"' })}${fld("porKm", "Por cada km adicional S/", d.porKm, { type: "number", extra: 'min="0" step="0.1"' })}${fld("maxKm", "Distancia máxima (km)", d.maxKm, { type: "number", extra: 'min="1" step="0.5"' })}
+    <h2>${ico("bike")} Costo del delivery (lo cobra el repartidor)</h2><p class="muted sm">Tarifa general. Para una provincia con otros precios, usa «Tarifas por provincia» (abajo).</p><div class="g2">${fld("base", "Tarifa base (primer km) S/", d.base, { type: "number", extra: 'min="0" step="0.5"' })}${fld("porKm", "Por cada km adicional S/", d.porKm, { type: "number", extra: 'min="0" step="0.1"' })}${fld("maxKm", "Distancia máxima · comida y tiendas (km)", d.maxKm, { type: "number", extra: 'min="1" step="0.5"' })}${fld("maxKmGrande", "Distancia máxima · ferreterías y talleres (km)", d.maxKmGrande ?? 50, { type: "number", extra: 'min="1" step="1"', help: "Rubros con «envío grande». Cada negocio puede poner un radio menor." })}
       <div class="fld"><span>Ejemplo</span><b id="ej"></b></div></div>
     <h2>${ico("pin")} Ciudad</h2><p class="muted sm">Punto donde empiezan los mapas.</p><div class="mapa" id="cMapa"></div>
     <h2>${ico("store")} Tipos de negocio</h2>${fld("tipos", "Uno por línea", c.tipos.join("\n"), { type: "textarea", full: true, rows: 6 })}
@@ -486,16 +544,52 @@ VIEWS.config = async () => {
       <div class="fld full"><span>QR de Yape</span><div class="foto-up"><span class="fp-yapeQR" id="cQrV" style="background-image:url('${esc(imgUrl(c.cobro.qr))}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir QR<input type="file" accept="image/*" id="cQr" hidden></label></div></div></div>
     <h2>${ico("bell")} Avisos al celular (notificaciones)</h2>${fld("vapid", "Clave pública de notificaciones (VAPID)", c.vapid || "", { full: true, ph: "Empieza con B… (Firebase → Configuración del proyecto → Cloud Messaging → Certificados web push)", help: "Es pública: no es una contraseña. Sin ella no se pueden activar los avisos." })}
     <h2>${ico("wa")} Soporte</h2>${fld("soporte", "WhatsApp de soporte de Apamuy", c.soporte || "")}
-    <div class="f-end"><button class="btn btn-pri">${ico("check")} Guardar</button></div></form>`;
+    <div class="f-end"><button class="btn btn-pri">${ico("check")} Guardar</button></div></form>
+    <section class="card" id="tarifas"></section>`;
+  pintarTarifas();
   const F = $("#cF"), ej = () => { const x = { base: +F.base.value || 0, porKm: +F.porKm.value || 0, maxKm: +F.maxKm.value || 1 }; $("#ej").textContent = `1 km: ${S(costoDelivery(1, x))} · 3 km: ${S(costoDelivery(3, x))} · 5 km: ${S(costoDelivery(5, x))}`;
     const y = { minimo: +F.eMin.value || 0, base: +F.eBase.value || 0, porKm: +F.ePorKm.value || 0, factorGrande: +F.eGrande.value || 1 }; $("#ejE").textContent = `3 km: ${S(sugerirEnvio(3, "pequeno", y))} · 10 km: ${S(sugerirEnvio(10, "pequeno", y))} · 50 km: ${S(sugerirEnvio(50, "pequeno", y))}`; };
   F.oninput = ej; ej(); mapaPin($("#cMapa"), pos, q => pos = q); let QR = c.cobro.qr || "";
   $("#cQr").onchange = async e => { const f = e.target.files[0]; if (!f) return; QR = await redimensionar(f, 600, .9, "image/png"); $("#cQrV").style.backgroundImage = `url('${QR}')`; };
   F.onsubmit = async e => { e.preventDefault(); const v = datosForm(F);
-    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 8 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""), vapid: (v.vapid || "").trim(),
+    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 15, maxKmGrande: +v.maxKmGrande || 50 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""), vapid: (v.vapid || "").trim(),
       rep: { comision: +v.repCom || 0, casaca: +v.casaca || 0 }, envio: { minimo: +v.eMin || 5, base: +v.eBase || 0, porKm: +v.ePorKm || 0, factorGrande: +v.eGrande || 1, maxKm: +v.eMax || 300 }, cobro: { yape: v.cYape, titular: v.cTit, qr: await subirFoto(`web/cobro/yape-${Date.now().toString(36)}.png`, QR) } });
     await cargarConfig(); toast("Configuración guardada"); };
 };
+
+/* ---------- Tarifas por provincia (delivery y envíos). Las que no tienen, usan la general. ---------- */
+function pintarTarifas() {
+  const box = $("#tarifas"); if (!box) return; const L = (CONF.tarifas || []).slice().sort((a, b) => a.prov.localeCompare(b.prov)), g = CONF.delivery, ge = CONF.envio;
+  const v = (x, def) => x === "" || x == null ? `<span class="muted">${S(def)}</span>` : S(x);
+  box.innerHTML = `<div class="v-h sm"><div><h2>${ico("pin")} Tarifas por provincia</h2><p class="muted sm">Ej. en una provincia de la selva el km cuesta más. Lo que dejes vacío usa la tarifa general (en gris).</p></div><button class="btn btn-pri btn-sm" id="tfAdd">${ico("plus")} Agregar provincia</button></div>
+    ${L.length ? `<div class="tbl-w"><table class="tbl"><thead><tr><th>Provincia</th><th>Delivery base</th><th>Por km</th><th>Envío mínimo</th><th>Envío base</th><th>Envío por km</th><th>Ejemplo 5 km</th><th></th></tr></thead><tbody>
+    ${L.map((t, i) => { const T = tarifaProv(t.prov); return `<tr><td><b>${esc(t.prov.split("|")[1])}</b><small class="muted"> · ${esc(t.prov.split("|")[0])}</small></td><td>${v(t.base, g.base)}</td><td>${v(t.porKm, g.porKm)}</td><td>${v(t.eMin, ge.minimo)}</td><td>${v(t.eBase, ge.base)}</td><td>${v(t.ePorKm, ge.porKm)}</td>
+      <td class="nw">🛵 ${S(costoDelivery(5, { ...T.delivery, maxKm: 999 }))} · 📦 ${S(sugerirEnvio(5, "pequeno", T.envio))}</td><td class="nw"><button class="btn btn-light btn-sm" data-tf="${esc(t.prov)}">Editar</button> <button class="btn btn-light btn-sm danger" data-tfx="${esc(t.prov)}">Quitar</button></td></tr>`; }).join("")}</tbody></table></div>`
+    : `<p class="muted">Aún no hay tarifas por provincia: todas usan la general (🛵 5 km = ${S(costoDelivery(5, { ...g, maxKm: 999 }))}).</p>`}`;
+  $("#tfAdd").onclick = () => editarTarifa(null);
+  box.onclick = async e => { const b = e.target.closest("[data-tf]"), x = e.target.closest("[data-tfx]");
+    if (b) editarTarifa((CONF.tarifas || []).find(t => t.prov === b.dataset.tf));
+    if (x && confirm("¿Quitar la tarifa de " + x.dataset.tfx.split("|")[1] + "? Volverá a usar la general.")) await guardarTarifas((CONF.tarifas || []).filter(t => t.prov !== x.dataset.tfx), "Tarifa quitada"); };
+}
+async function guardarTarifas(L, msg) { await DB.set("config", "general", { tarifas: L }); await cargarConfig(); toast(msg); pintarTarifas(); }
+function editarTarifa(t) {
+  const U = window.UBIGEO || {}, [d0, p0] = t ? t.prov.split("|") : [CONF.ciudadInicial.dep, CONF.ciudadInicial.prov], g = CONF.delivery, ge = CONF.envio;
+  const num = (k, lab, def, step) => fld(k, lab, t && t[k] != null ? t[k] : "", { type: "number", extra: `min="0" step="${step}"`, ph: "General: " + def });
+  modal(t ? "Tarifa de " + p0 : "Tarifa de una provincia", `<div class="g2"><label class="fld"><span>Departamento</span><select name="dep" id="tfDep" ${t ? "disabled" : ""}>${Object.keys(U).sort().map(x => `<option ${x === d0 ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
+    <label class="fld"><span>Provincia</span><select name="prov" id="tfProv" ${t ? "disabled" : ""}></select></label></div>
+    <h3 class="m-h">🛵 Delivery de pedidos</h3><div class="g2">${num("base", "Tarifa base (primer km) S/", g.base, 0.5)}${num("porKm", "Por cada km adicional S/", g.porKm, 0.1)}</div>
+    <h3 class="m-h">📦 Envíos de paquetes</h3><div class="g3">${num("eMin", "Precio mínimo S/", ge.minimo, 0.5)}${num("eBase", "Sugerido: base S/", ge.base, 0.5)}${num("ePorKm", "Sugerido: por km S/", ge.porKm, 0.1)}</div>
+    <p class="muted sm" id="tfEj"></p>`, async (d) => {
+      const prov = t ? t.prov : provKey($("#tfDep").value, $("#tfProv").value), n = x => x === "" || x == null ? null : Math.max(0, +x);
+      const nueva = { prov, base: n(d.base), porKm: n(d.porKm), eMin: n(d.eMin), eBase: n(d.eBase), ePorKm: n(d.ePorKm) };
+      if (["base", "porKm", "eMin", "eBase", "ePorKm"].every(k => nueva[k] == null)) { toast("Pon al menos un precio", true); return false; }
+      await guardarTarifas([...(CONF.tarifas || []).filter(x => x.prov !== prov), nueva], "Tarifa de " + prov.split("|")[1] + " guardada");
+    }, "Guardar tarifa", { alAbrir: F => {
+      const pv = () => { const dd = $("#tfDep").value; $("#tfProv").innerHTML = Object.keys(U[dd] || {}).sort().map(p => `<option ${p === p0 ? "selected" : ""}>${esc(p)}</option>`).join(""); }; pv(); $("#tfDep").onchange = pv;
+      const ej = () => { const v = k => F[k].value === "" ? null : +F[k].value, dl = { base: v("base") ?? g.base, porKm: v("porKm") ?? g.porKm, maxKm: 999 }, en = { ...ge, minimo: v("eMin") ?? ge.minimo, base: v("eBase") ?? ge.base, porKm: v("ePorKm") ?? ge.porKm };
+        $("#tfEj").textContent = `Ejemplo · Delivery: 3 km ${S(costoDelivery(3, dl))} · 8 km ${S(costoDelivery(8, dl))} · 20 km ${S(costoDelivery(20, dl))}  ·  Envío 10 km: ${S(sugerirEnvio(10, "pequeno", en))}`; };
+      F.oninput = ej; ej(); } });
+}
 
 /* ================= ADMIN · PÁGINA WEB (textos de la portada y ejemplos) ================= */
 VIEWS.web = async () => {
