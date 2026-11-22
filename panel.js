@@ -259,13 +259,18 @@ function responderSol(s) {
 /* ================= NEGOCIO · INICIO ================= */
 VIEWS.inicio = async () => {
   const hoy = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HOY()])).filter(p => !["anulado", "rechazado"].includes(p.estado));
+  const [neg2, cals] = await Promise.all([DB.get("negocios", NEG.id).catch(() => NEG), DB.list("calificacionesNeg", ["negocioId", "==", NEG.id]).catch(() => [])]), est = estNeg(neg2 || NEG);
   const ent = hoy.filter(p => p.estado === "entregado"), ventas = ent.reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0);
   $("#view").innerHTML = topBar(`Hola, ${esc(NEG.nombre)}`, "Así va tu negocio hoy.", NEG.estado === "activo" ? `<a class="btn btn-light btn-sm" href="${esc(AP.web)}/negocio?n=${encodeURIComponent(NEG.id)}" target="_blank" rel="noopener">${ico("arrow")} Ver mi tienda en la app</a>` : "") + `
     <div class="kpis neon"><div class="kpi"><span>Ventas de hoy</span><b>${S(ventas)}</b><small>${ent.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Pedidos de hoy</span><b>${hoy.length}</b><small>sin contar anulados</small></div>
       <div class="kpi"><span>Por atender</span><b>${PEDS.filter(p => ["por-validar", "nuevo"].includes(p.estado)).length}</b><small>nuevos o por validar</small></div><div class="kpi"><span>En curso</span><b>${PEDS.length}</b><small>preparando, listos o en camino</small></div>
-      <div class="kpi"><span>Comisión de hoy</span><b>${S(ventas * pctDe(NEG) / 100)}</b><small>${pctDe(NEG)}% de la comida entregada</small></div></div>
+      <div class="kpi"><span>Comisión de hoy</span><b>${S(ventas * pctDe(NEG) / 100)}</b><small>${pctDe(NEG)}% de la comida entregada</small></div>
+      <div class="kpi"><span>Calificación de clientes</span><b>${est ? `<span class="star-k">★</span> ${est.prom.toFixed(1)}` : "—"}</b><small>${est ? `${est.c} calificación(es)` : "Aún sin calificaciones"}</small></div></div>
     <section class="card"><div class="card-h"><h2>${ico("bell")} Pedidos en curso</h2><button class="btn btn-light btn-sm" data-go="pedidos">Ver tablero</button></div>
       <ul class="lst">${PEDS.slice().sort((a, b) => String(a.creado).localeCompare(b.creado)).map(p => `<li><div><b>${p.entrega === "delivery" ? "🛵" : "🏪"} ${esc(p.cliente.nombre)} · ${S(p.total)}</b><small>${esc(p.codigo)} · ${hace(p.creado)}</small></div>${estP(p.estado, p)}</li>`).join("") || `<li class="muted">${NEG.estado === "activo" ? "No hay pedidos en curso." : "Cuando aprobemos tu negocio, aquí verás tus pedidos."}</li>`}</ul></section>`;
+  const ult = cals.sort((x, y) => String(y.creado).localeCompare(x.creado)).slice(0, 6);
+  if (ult.length) $("#view").insertAdjacentHTML("beforeend", `<section class="card"><div class="card-h"><h2>${ico("star")} Lo que dicen tus clientes</h2></div>
+    <ul class="lst">${ult.map(c => `<li><div><b><span class="star-k">${"★".repeat(c.estrellas)}</span><span class="star-o">${"★".repeat(5 - c.estrellas)}</span> · ${esc(c.cliente || "Cliente")}</b><small>${c.comentario ? "«" + esc(c.comentario) + "» · " : ""}${hace(c.creado)}</small></div></li>`).join("")}</ul></section>`);
 };
 
 /* ================= NEGOCIO · PEDIDOS (tablero) ================= */
@@ -407,7 +412,7 @@ VIEWS.carta = async () => {
     <section class="card"><div class="card-h"><input class="q" id="pq" placeholder="Buscar plato…" value="${esc(PQ)}"><span class="muted sm">${l.length} plato(s)</span></div>
       <div class="tbl-w"><table class="tbl"><thead><tr><th></th><th>Plato</th><th>Categoría</th><th class="r">${SV ? "Desde" : "Precio"}</th><th>${SV ? "Disponible" : "Hay hoy"}</th><th>Visible</th><th></th></tr></thead><tbody>
       ${l.map(p => `<tr class="${p.activo === false ? "off" : ""}"><td>${p.foto ? `<span class="p-th" style="background-image:url('${esc(p.foto)}')"></span>` : `<span class="p-th em">🍽️</span>`}</td><td><b>${esc(p.nombre)}</b><small>${(p.opciones || []).map(g => esc(g.titulo)).join(" · ") || "sin opciones"}</small></td><td>${esc(cn(p.cat))}</td>
-        <td class="r"><input class="q precio" type="number" min="0" step="0.1" value="${p.precio}" data-pr="${esc(p.id)}" aria-label="Precio de ${esc(p.nombre)}"></td>
+        <td class="r"><input class="q precio" type="number" min="0" step="0.1" value="${p.precio}" data-pr="${esc(p.id)}" aria-label="Precio de ${esc(p.nombre)}">${dtoDe(p) ? `<small class="dto-p">-${dtoDe(p)}% · antes ${S(p.precioAntes)}</small>` : ""}</td>
         <td><label class="sw"><input type="checkbox" data-hay="${esc(p.id)}" ${p.agotado ? "" : "checked"}><i></i><span>${p.agotado ? "Agotado" : "Sí"}</span></label></td><td><label class="sw"><input type="checkbox" data-vis="${esc(p.id)}" ${p.activo === false ? "" : "checked"}><i></i></label></td>
         <td><button class="btn btn-light btn-sm" data-ep="${esc(p.id)}" aria-label="Editar">${ico("edit")}</button></td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aún no tienes platos.</td></tr>`}</tbody></table></div></section>`;
   const col = `negocios/${NEG.id}/productos`;
@@ -431,7 +436,7 @@ function formPlato(p) {
   let G = JSON.parse(JSON.stringify(p?.opciones || [])), FOTO = p?.foto || "", leerG = () => {};
   const plant = {}; PRODS.forEach(x => (x.opciones || []).forEach(g => { const k = g.titulo + "|" + gruposTxt(g); if (!plant[k]) plant[k] = g; }));
   modal(p ? "Editar plato" : "Nuevo plato", `<div class="g2"><div class="full"><span class="lbl">Foto</span><div class="foto-up"><span id="fPrev" style="background-image:url('${esc(FOTO)}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir foto<input type="file" accept="image/*" id="fFile" hidden></label><button type="button" class="btn btn-light btn-sm" id="fX">Quitar</button></div></div>
-    ${fld("nombre", "Nombre", p?.nombre || "", { req: true, full: true })}${fld("cat", "Categoría", p?.cat || CATS[0]?.id, { opts: CATS.map(c => [c.id, c.nombre]) })}${fld("precio", rubroDe(NEG.rubro).modo === "servicios" ? "Precio desde (S/)" : "Precio (S/)", p?.precio ?? "", { type: "number", req: true, extra: 'min="0" step="0.1"' })}
+    ${fld("nombre", "Nombre", p?.nombre || "", { req: true, full: true })}${fld("cat", "Categoría", p?.cat || CATS[0]?.id, { opts: CATS.map(c => [c.id, c.nombre]) })}${fld("precio", rubroDe(NEG.rubro).modo === "servicios" ? "Precio desde (S/)" : "Precio (S/)", p?.precio ?? "", { type: "number", req: true, extra: 'min="0" step="0.1"' })}${fld("precioAntes", "Precio antes (S/) · opcional", p?.precioAntes ?? "", { type: "number", extra: 'min="0" step="0.1"', help: "Si lo pones mayor al precio, el cliente ve la oferta: «-20%» y el precio antes tachado." })}
     ${fld("desc", "Descripción corta", p?.desc || "", { type: "textarea", full: true, rows: 2 })}
     ${fld("destacado", "⭐ Favorito (sale arriba)", !!p?.destacado, { type: "checkbox" })}${fld("sugerirBebida", "Ofrecer bebida al agregarlo", p ? !!p.sugerirBebida : false, { type: "checkbox" })}
     ${(NEG.extrasGratis || []).length ? fld("extrasGratis", `Ofrecer extras gratis (${esc(NEG.extrasGratis.slice(0, 3).join(", "))}…)`, !!p?.extrasGratis, { type: "checkbox" }) : ""}${fld("agotado", "Agotado hoy", !!p?.agotado, { type: "checkbox" })}${fld("activo", "Visible en la app", p ? p.activo !== false : true, { type: "checkbox" })}
@@ -440,7 +445,7 @@ function formPlato(p) {
     ${p ? `<button type="button" class="btn btn-light danger btn-sm" id="delP">${ico("trash")} Eliminar plato</button>` : ""}`, async d => {
     leerG(); if (G.find(g => !g.titulo || !g.items.length)) { toast("Cada grupo necesita título y al menos una opción", true); return false; }
     const id = p?.id || "p" + Date.now().toString(36), foto = await subirFoto(`negocios/${NEG.id}/productos/${id}-${Date.now().toString(36)}.jpg`, FOTO);
-    await DB.set(`negocios/${NEG.id}/productos`, id, { nombre: d.nombre, cat: d.cat, precio: r2(d.precio), desc: d.desc, destacado: d.destacado, sugerirBebida: d.sugerirBebida, extrasGratis: !!d.extrasGratis, agotado: d.agotado, activo: d.activo, foto, opciones: G, orden: p?.orden ?? PRODS.length, actualizado: new Date().toISOString() }, false);
+    await DB.set(`negocios/${NEG.id}/productos`, id, { nombre: d.nombre, cat: d.cat, precio: r2(d.precio), precioAntes: +d.precioAntes > +d.precio ? r2(d.precioAntes) : null, desc: d.desc, destacado: d.destacado, sugerirBebida: d.sugerirBebida, extrasGratis: !!d.extrasGratis, agotado: d.agotado, activo: d.activo, foto, opciones: G, orden: p?.orden ?? PRODS.length, actualizado: new Date().toISOString() }, false);
     toast("Plato guardado · ya se ve en la app"); VIEWS.carta(); }, "Guardar", { wide: true, alAbrir: F => {
     const pintarG = () => { $("#grps").innerHTML = G.map((g, k) => `<div class="grp" data-g="${k}"><div class="grp-h"><input class="q" data-gt value="${esc(g.titulo)}" placeholder="Título (ej. Tamaño)" aria-label="Título del grupo"><select class="q" data-gk><option value="uno" ${g.tipo !== "varios" ? "selected" : ""}>Elige 1</option><option value="varios" ${g.tipo === "varios" ? "selected" : ""}>Elige varios</option></select>
       <label class="chk"><input type="checkbox" data-gr ${g.req ? "checked" : ""}><span>Obligatorio</span></label><button type="button" class="btn btn-light btn-xs" data-gx="${k}" aria-label="Quitar grupo">${ico("trash")}</button></div>

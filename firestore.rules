@@ -36,7 +36,7 @@ service cloud.firestore {
       allow create: if ejemplo() || (dueno() && d().owner == nid && d().estado == 'pendiente'
         && !('comision' in d()) && !('aprobado' in d()) && !('motivo' in d()));
       // El dueño edita sus datos, pero NO su estado ni su comisión. El admin SOLO cambia estado y comisión.
-      allow update: if ejemplo() || (dueno() && !cambia(['estado', 'owner', 'email', 'comision', 'aprobado', 'motivo', 'revisado', 'bloqueoCobro']))
+      allow update: if ejemplo() || (dueno() && !cambia(['estado', 'owner', 'email', 'comision', 'aprobado', 'motivo', 'revisado', 'bloqueoCobro', 'estrellasSum', 'estrellasN']))
                     || (admin() && soloCambia(['estado', 'comision', 'motivo', 'revisado', 'aprobado', 'bloqueoCobro']));
       allow delete: if admin();
 
@@ -111,6 +111,17 @@ service cloud.firestore {
     match /verificaciones/{uid} {
       allow read: if logueado() && (request.auth.uid == uid || admin());
       allow write: if false;
+    }
+
+    // ⭐ Calificación del cliente al negocio: una por pedido entregado (id = código del pedido). El servidor suma el promedio.
+    match /calificacionesNeg/{pid} {
+      function ped() { return get(/databases/$(database)/documents/pedidos/$(pid)).data; }
+      allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || resource.data.negocioId == request.auth.uid || admin());
+      allow create: if logueado() && d().clienteUid == request.auth.uid && ped().clienteUid == request.auth.uid && ped().estado == 'entregado'
+        && ped().negocioId == d().negocioId && d().estrellas is int && d().estrellas >= 1 && d().estrellas <= 5
+        && (!('comentario' in d()) || (d().comentario is string && d().comentario.size() <= 200))
+        && d().keys().hasOnly(['negocioId', 'clienteUid', 'cliente', 'estrellas', 'comentario', 'creado']);
+      allow update, delete: if false;
     }
 
     // 💰 Comisión semanal de los negocios (la crea el servidor cada lunes; el negocio sube su pago; el admin aprueba)
