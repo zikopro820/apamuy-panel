@@ -34,6 +34,11 @@ service firebase.storage {
       allow read: if request.auth != null && (request.auth.uid == nid || admin());
       allow create, update: if request.auth != null && request.auth.uid == nid && documento();
     }
+    // Boleta/factura que Apamuy emite a cada negocio por su comisión: la sube el admin, la ve ese negocio
+    match /comprobantes-apamuy/{nid}/{archivo} {
+      allow read: if request.auth != null && (request.auth.uid == nid || admin());
+      allow create, update: if admin() && documento();
+    }
     // Capturas de los pagos del repartidor a Apamuy
     match /pagosrep/{uid}/{archivo} {
       allow read: if request.auth != null && (request.auth.uid == uid || admin());

@@ -5,7 +5,7 @@
    ========================================================= */
 const VIEWS = {}; let VISTA = "", YO = null, NEG = null, ADMIN = false;
 const NAV_NEG = [["inicio", "home", "Inicio"], ["pedidos", "bell", "Pedidos"], ["carta", "fire", "Carta y precios"], ["caja", "cash", "Caja"], ["comision", "percent", "Comisión Apamuy"], ["negocio", "store", "Mi negocio"]];
-const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["enviosAdm", "box", "Envíos"], ["comisiones", "percent", "Comisiones"], ["cobrosNeg", "cash", "Cobros negocios"], ["repartidores", "bike", "Repartidores"], ["cobrosRep", "cash", "Cobros repartidores"],
+const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["enviosAdm", "box", "Envíos"], ["comisiones", "percent", "Comisiones"], ["cobrosNeg", "cash", "Cobros negocios"], ["consultar", "search", "Consultar DNI / RUC"], ["repartidores", "bike", "Repartidores"], ["cobrosRep", "cash", "Cobros repartidores"],
   ["clientes", "users", "Clientes"], ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["config", "gear", "Comisión y delivery"]];
 const ESTADOS_N = { pendiente: ["En revisión", "warn"], activo: ["Activo", "ok"], suspendido: ["Suspendido", "bad"], rechazado: ["Rechazado", "bad"] };
 const estN = e => { const [t, c] = ESTADOS_N[e] || [e, "mute"]; return `<span class="st ${c}">${t}</span>`; };
@@ -486,7 +486,8 @@ VIEWS.comision = async () => {
   const ps = (await Promise.all(meses.map(m => DB.list("pedidos", ["negocioId", "==", NEG.id], ["mes", "==", m])))).flat().filter(p => p.estado === "entregado" && p.dia >= lun);
   const vSem = r2(ps.reduce((a, p) => a + ventaPed(p), 0)), pp = porPagar(), t = r2(pp.reduce((a, l) => a + l.total, 0)), acum = LIQ.filter(l => l.estado === "acumulada");
   const fila = l => `<tr><td><b>${semTxt(l)}</b>${l.arrastre ? `<small>+ semanas anteriores (${S(l.arrastre.comision)})</small>` : ""}</td><td>${l.pedidos}</td><td class="r">${S(l.ventas)}</td><td>${l.pct}%</td><td class="r"><b>${S(l.total)}</b></td>
-    <td><span class="st ${EST_L[l.estado]?.[1] || ""}">${EST_L[l.estado]?.[0] || l.estado}</span>${l.rechazo && l.estado === "pendiente" ? `<small class="neg">❌ ${esc(l.rechazo)}</small>` : ""}</td></tr>`;
+    <td><span class="st ${EST_L[l.estado]?.[1] || ""}">${EST_L[l.estado]?.[0] || l.estado}</span>${l.rechazo && l.estado === "pendiente" ? `<small class="neg">❌ ${esc(l.rechazo)}</small>` : ""}
+      ${l.comprobante ? `<small>🧾 ${esc(l.comprobante.numero)}${l.comprobante.url ? ` · <a href="${esc(l.comprobante.url)}" target="_blank" rel="noopener">Descargar</a>` : ""}</small>` : ""}</td></tr>`;
   $("#view").innerHTML = topBar("Comisión Apamuy", `Apamuy cobra el ${pct}% de lo que vendes por la app. Se liquida cada lunes (semana de lunes a domingo) y tienes hasta el miércoles para pagar por Yape.`) + `
     ${pp.length ? `<section class="card pagar-c"><div><span class="muted">Por pagar</span><b class="big">${S(t)}</b><small>${pp.map(l => `Semana del ${semTxt(l)}`).join(" · ")} · vence el ${fmtF(pp.map(l => l.vence).sort()[0], { weekday: "long", day: "numeric", month: "short" })}</small></div>
       <button class="btn btn-pri btn-lg" id="pgCom">💰 Pagar mi comisión</button></section>` : LIQ.some(l => l.estado === "revision") ? `<div class="alert pri">${ico("clock")} <span>Recibimos tu pago. Lo estamos revisando.</span></div>` : `<div class="alert ok">${ico("check")} <span>Estás al día. ¡Gracias!</span></div>`}
@@ -600,10 +601,35 @@ VIEWS.comisiones = async () => {
     abrirWA(f.n.whatsapp, `Hola ${f.n.nombre} 👋 te escribe Apamuy.\n\nEn ${CM_M} vendiste ${S(f.v)} en comida por la app (${f.cnt} pedidos). La comisión del ${f.pct}% es *${S(f.c)}*.\n\n¡Gracias por vender con Apamuy!`); };
 };
 
+/* ================= ADMIN · CONSULTAR DNI / RUC (Decolecta, desde el servidor) ================= */
+let CONSULTAS = [];
+VIEWS.consultar = async () => {
+  const fila = c => c.tipo === "dni" ? `<div class="cq"><span class="st info">DNI</span><b class="mono">${esc(c.num)}</b><div><b>${esc(c.r.nombre)}</b></div><button class="btn btn-light btn-xs" data-cq="${esc(c.r.nombre)}">${ico("file")} Copiar</button></div>`
+    : `<div class="cq"><span class="st info">RUC</span><b class="mono">${esc(c.num)}</b><div><b>${esc(c.r.razonSocial)}</b><small>${esc(c.r.direccion || "")}</small><span class="st ${c.r.estado === "ACTIVO" ? "ok" : "bad"}">${esc(c.r.estado)}</span> <span class="st ${c.r.condicion === "HABIDO" ? "ok" : "warn"}">${esc(c.r.condicion || "")}</span></div>
+      <button class="btn btn-light btn-xs" data-cq="${esc(`RUC: ${c.num}\nRazón social: ${c.r.razonSocial}\nDirección: ${c.r.direccion || ""}\nEstado: ${c.r.estado} · ${c.r.condicion}`)}">${ico("file")} Copiar</button></div>`;
+  $("#view").innerHTML = topBar("Consultar DNI / RUC", "DNI → nombre (RENIEC). RUC → razón social, dirección y estado (SUNAT). Úsalo solo para tu trabajo: son datos personales. Máximo 50 consultas al día.") + `
+    <section class="card"><form id="cqF" class="cq-f" novalidate><input name="num" inputmode="numeric" maxlength="11" placeholder="DNI (8) o RUC (11 números)" autocomplete="off"><button class="btn btn-pri">${ico("search")} Consultar</button></form>
+      ${CONF.verificarDni ? "" : `<div class="alert warn sm">${ico("alert")} <span>Las consultas están apagadas. Actívalas en «Comisión y delivery».</span></div>`}<p class="err" id="cqE"></p>
+      <div id="cqL">${CONSULTAS.map(fila).join("") || `<p class="muted">Aquí verás tus consultas de esta sesión.</p>`}</div></section>`;
+  const F = $("#cqF"), E = $("#cqE");
+  F.num.oninput = () => F.num.value = F.num.value.replace(/\D/g, "");
+  F.onsubmit = async e => { e.preventDefault(); E.textContent = ""; const num = F.num.value, b = $("button", F);
+    if (!/^\d{8}$/.test(num) && !rucOk(num)) return E.textContent = "Escribe un DNI (8 números) o un RUC (11 números que empieza con 10 o 20).";
+    b.disabled = true; b.textContent = "Consultando…";
+    try { const dni = num.length === 8, r = await llamarServidor(dni ? "verificarDni" : "verificarRuc", dni ? { dni: num, para: "comprobante" } : { ruc: num, para: "comprobante" });
+      CONSULTAS = [{ tipo: dni ? "dni" : "ruc", num, r }, ...CONSULTAS.filter(c => c.num !== num)].slice(0, 20); return VIEWS.consultar(); }
+    catch (x) { E.textContent = errConsulta(x, num.length === 8 ? "ese DNI" : "ese RUC"); }
+    b.disabled = false; b.innerHTML = `${ico("search")} Consultar`; };
+  $("#cqL").onclick = e => { const b = e.target.closest("[data-cq]"); if (b) navigator.clipboard?.writeText(b.dataset.cq).then(() => toast("📋 Copiado")); };
+  F.num.focus();
+};
+
 /* ================= ADMIN · COBROS A NEGOCIOS (comisión semanal) ================= */
 let CN_T = "revision";
 VIEWS.cobrosNeg = async () => {
-  const [L, ns] = await Promise.all([DB.list("liquidaciones"), DB.list("negocios")]), ahora = Date.now();
+  const [L, ns, VS] = await Promise.all([DB.list("liquidaciones"), DB.list("negocios"), DB.list("verificaciones").catch(() => [])]), ahora = Date.now();
+  // Datos para la boleta/factura de la comisión (lo que puso el negocio + lo que verificó el servidor)
+  const docN = id => { const n = ns.find(x => x.id === id) || {}, d = n.documento || {}, v = VS.find(x => x.id === id); return { ...d, chk: verDoc(d, v), dir: d.tipo !== "DNI" && v && v.ruc && v.ruc.ruc === d.numero ? v.ruc.direccion : "" }; };
   // Respaldo del servidor: oculta a los que ya vencieron sin pagar
   const venc = L.filter(l => l.estado === "pendiente" && l.vence && new Date(l.vence).getTime() < ahora), aBloq = [...new Set(venc.map(l => l.negocioId))].filter(id => { const n = ns.find(x => x.id === id); return n && !n.bloqueoCobro; });
   if (aBloq.length) { await DB.batch(aBloq.map(id => ({ op: "set", col: "negocios", id, data: { bloqueoCobro: true } }))); aBloq.forEach(id => { const n = ns.find(x => x.id === id); if (n) n.bloqueoCobro = true; }); }
@@ -613,20 +639,33 @@ VIEWS.cobrosNeg = async () => {
   const fila = l => { const n = neg(l.negocioId), v = l.vence && new Date(l.vence).getTime() < ahora;
     return `<tr><td><b>${esc(l.negocio || n.nombre || l.negocioId)}</b>${n.bloqueoCobro ? ` <span class="st bad">🔒 oculto</span>` : ""}<small>Semana del ${semTxt(l)}${l.arrastre ? " + anteriores" : ""}</small></td><td>${l.pedidos}</td><td class="r">${S(l.ventasTotal)}</td><td>${l.pct}%</td><td class="r"><b>${S(l.total)}</b></td>
       <td>${l.estado === "pendiente" ? `<span class="${v ? "neg" : ""}">${v ? "Venció " : "Vence "}${fmtF(l.vence)}</span>` : l.estado === "pagada" ? `<small>${fmtFH(l.aprobado)}</small>` : ""}</td>
-      <td class="nw">${l.estado === "pendiente" && (l.whatsapp || n.whatsapp) ? `<button class="btn btn-wa btn-sm" data-rec="${esc(l.id)}">${ico("wa")} Recordar</button>` : ""}</td></tr>`; };
+      <td class="nw">${l.estado === "pendiente" && (l.whatsapp || n.whatsapp) ? `<button class="btn btn-wa btn-sm" data-rec="${esc(l.id)}">${ico("wa")} Recordar</button>` : ""}
+        ${l.estado === "pagada" ? (l.comprobante ? `<span class="st ok">🧾 ${esc(l.comprobante.numero)}</span>${l.comprobante.url ? ` <a class="btn btn-light btn-xs" href="${esc(l.comprobante.url)}" target="_blank" rel="noopener">Ver</a>` : ""}`
+          : `<button class="btn btn-light btn-xs" data-cpy="${esc(l.id)}" title="Datos para la boleta o factura">${ico("file")} Datos</button> <button class="btn btn-pri btn-xs" data-emi="${esc(l.id)}">🧾 Ya la emití</button>`) : ""}</td></tr>`; };
   $("#view").innerHTML = topBar("Cobros a negocios", `Cada lunes se liquida la semana (lunes a domingo). Tienen hasta el miércoles para pagar por Yape; si no, su tienda se oculta sola. Ventas menores de ${S(COB.minVentas)}: se acumulan.`,
       `<button class="btn btn-light btn-sm" id="cnLiq">${ico("file")} Liquidar semana pasada</button>`) + `
     <div class="kpis neon"><div class="kpi"><span>Por revisar</span><b>${rev.length}</b><small>${S(rev.reduce((a, l) => a + l.total, 0))}</small></div><div class="kpi"><span>Por cobrar</span><b>${S(pend.reduce((a, l) => a + l.total, 0))}</b><small>${pend.length} semana(s)</small></div>
       <div class="kpi"><span>Ocultos por deuda</span><b>${ns.filter(n => n.bloqueoCobro).length}</b><small>negocio(s)</small></div><div class="kpi"><span>Cobrado este mes</span><b>${S(pag.filter(l => String(l.aprobado || "").slice(0, 7) === HOY().slice(0, 7)).reduce((a, l) => a + l.total, 0))}</b></div></div>
     <div class="seg cn-tabs">${Object.entries(T).map(([k, [t, l]]) => `<button class="${CN_T === k ? "on" : ""}" data-cnt="${k}">${t} (${l.length})</button>`).join("")}</div>
     ${CN_T === "revision" ? `<section class="card">${rev.length ? `<div class="pg-l">${rev.map(l => `<div class="pg"><a class="pg-c" href="${esc(l.pago?.captura || "#")}" target="_blank" rel="noopener">${l.pago?.captura ? `<img class="doc-i" src="${esc(l.pago.captura)}" alt="Captura">` : "—"}</a>
-        <div><b>${S(l.pago?.monto ?? l.total)}</b> · ${esc(l.negocio)}<small>op. ${esc(l.pago?.operacion || "")} · ${fmtFH(l.pago?.fecha)} · semana del ${semTxt(l)} (debe ${S(l.total)})</small></div>
+        <div><b>${S(l.pago?.monto ?? l.total)}</b> · ${esc(l.negocio)}<small>op. ${esc(l.pago?.operacion || "")} · ${fmtFH(l.pago?.fecha)} · semana del ${semTxt(l)} (debe ${S(l.total)})</small>${(d => d.numero ? `<small>🧾 ${esc(d.tipo)} ${esc(d.numero)} · ${esc(d.nombre || "")} ${d.chk}</small>` : "")(docN(l.negocioId))}</div>
         <div class="acts-g"><button class="btn btn-pri btn-sm" data-ok="${esc(l.id)}">${ico("check")} Llegó</button><button class="btn btn-light btn-sm" data-no="${esc(l.id)}">No llegó</button></div></div>`).join("")}</div>
         <div class="alert warn sm">${ico("alert")} <span>Antes de aprobar, <b>confirma en tu Yape que el dinero llegó</b>.</span></div>` : `<p class="muted">No hay pagos por revisar. 👍</p>`}</section>`
       : `<section class="card"><div class="tbl-w"><table class="tbl"><thead><tr><th>Negocio</th><th>Pedidos</th><th class="r">Ventas</th><th>%</th><th class="r">Comisión</th><th></th><th></th></tr></thead><tbody>
         ${T[CN_T][1].map(fila).join("") || `<tr><td colspan="7" class="muted">Nada por aquí.</td></tr>`}</tbody></table></div></section>`}`;
   $("#cnLiq").onclick = liquidarAhora;
-  $("#view").onclick = async e => { const t = e.target.closest("[data-cnt]"), ok = e.target.closest("[data-ok]"), no = e.target.closest("[data-no]"), rec = e.target.closest("[data-rec]");
+  $("#view").onclick = async e => { const t = e.target.closest("[data-cnt]"), ok = e.target.closest("[data-ok]"), no = e.target.closest("[data-no]"), rec = e.target.closest("[data-rec]"), cpy = e.target.closest("[data-cpy]"), emi = e.target.closest("[data-emi]");
+    if (cpy) { const l = L.find(x => x.id === cpy.dataset.cpy), d = docN(l.negocioId);
+      const txt = `${d.tipo === "DNI" ? "BOLETA" : "FACTURA"}\n${d.tipo || "Doc."}: ${d.numero || "—"}\n${d.tipo === "DNI" ? "Nombre" : "Razón social"}: ${d.nombre || l.negocio}${d.dir ? `\nDirección: ${d.dir}` : ""}\nConcepto: Comisión por uso de la plataforma Apamuy · semana del ${semTxt(l)} (${l.pedidos} pedidos, ventas ${S(l.ventasTotal)})\nTotal: ${S(l.total)}`;
+      return modal("Datos para el comprobante", `<p class="muted">${d.chk || ""}</p><pre class="pre">${esc(txt)}</pre>${!d.numero ? `<div class="alert warn sm">${ico("alert")} <span>Este negocio no tiene RUC ni DNI en «Datos del titular».</span></div>` : ""}`, async () => { await navigator.clipboard?.writeText(txt); toast("📋 Copiado"); }, "Copiar"); }
+    if (emi) { const l = L.find(x => x.id === emi.dataset.emi); let ARCH = "", EXT = "pdf";
+      return modal("Comprobante de la comisión", `<p class="muted">${esc(l.negocio)} · semana del ${semTxt(l)} · <b>${S(l.total)}</b>. Emítelo en tu sistema y anota aquí el número: el negocio lo descarga en «Comisión Apamuy».</p>
+        <div class="g2">${fld("numero", "Serie y número", "", { req: true, ph: "Ej. F001-00000045" })}<div class="fld"><span>PDF o foto (opcional)</span><div class="foto-up"><span class="fp-logo" id="ceV">📄</span><label class="btn btn-light btn-sm">${ico("file")} Subir archivo<input type="file" accept="application/pdf,image/*" id="ceF" hidden></label></div></div></div>`,
+        async d => { const numero = d.numero.trim().toUpperCase().slice(0, 30); if (!numero) { toast("Escribe el número", true); return false; }
+          const url = ARCH ? await subirFoto(`comprobantes-apamuy/${l.negocioId}/${l.id}-${Date.now().toString(36)}.${EXT}`, ARCH) : "";
+          await DB.set("liquidaciones", l.id, { comprobante: { numero, url, fecha: new Date().toISOString() } }); toast("✅ Guardado: el negocio ya lo puede descargar"); VIEWS.cobrosNeg(); }, "Guardar",
+        { alAbrir: F => { $("#ceF", F).onchange = async e => { const f = e.target.files[0]; if (!f) return; if (f.size > 3 * 1024 * 1024) return toast("El archivo pesa más de 3 MB", true);
+          if (f.type === "application/pdf") { ARCH = await leerArchivo(f); EXT = "pdf"; $("#ceV").textContent = "✅"; } else { ARCH = await redimensionar(f, 1400, .8); EXT = "jpg"; $("#ceV").style.backgroundImage = `url('${ARCH}')`; $("#ceV").textContent = ""; } }; } }); }
     if (t) { CN_T = t.dataset.cnt; return VIEWS.cobrosNeg(); }
     if (ok) { const l = L.find(x => x.id === ok.dataset.ok), ah = new Date().toISOString();
       // Si ya no le queda nada vencido sin pagar, su tienda vuelve a aparecer

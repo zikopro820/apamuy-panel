@@ -316,3 +316,7 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .cmp-p { border: 1px dashed #d9cfe8; background: #faf7ff; border-radius: 12px; padding: 8px 10px; margin: 6px 0; font-size: .9rem; display: block; line-height: 1.45; } .cmp-p .acts-g { margin-top: 6px; } .cmp-p .st { display: inline-block; } .cmp-p.ok { background: #f2fbf6; border-color: #bfe6cf; } .cmp-p small { display: block; color: var(--muted); }
 .pre { white-space: pre-wrap; background: #f6f3ee; padding: 10px; border-radius: 10px; font-size: .9rem; }
 .doc-v { display: flex; gap: 8px; align-items: flex-end; } .doc-v .fld { flex: 1; } #docM { display: block; margin: -4px 0 8px; } #docM.ok-t { color: #157a46; font-weight: 700; } #docM.err { color: #c0262d; }
+/* v3 · Consultar DNI / RUC */
+.cq-f { display: flex; gap: 8px; max-width: 520px; } .cq-f input { flex: 1; min-width: 0; font-size: 1.1rem; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.cq { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); } .cq small { display: block; color: var(--muted); }
+@media (max-width: 640px) { .cq { grid-template-columns: auto 1fr; } .cq > div { grid-column: 1 / -1; } }
