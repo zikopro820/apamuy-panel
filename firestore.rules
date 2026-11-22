@@ -107,6 +107,12 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
 
+    // DNI verificado con RENIEC: solo lo escribe el servidor (función verificarDni)
+    match /verificaciones/{uid} {
+      allow read: if logueado() && (request.auth.uid == uid || admin());
+      allow write: if false;
+    }
+
     // 💰 Comisión semanal de los negocios (la crea el servidor cada lunes; el negocio sube su pago; el admin aprueba)
     match /liquidaciones/{lid} {
       allow read: if logueado() && (resource.data.negocioId == request.auth.uid || admin());
@@ -246,7 +252,7 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/negocios/$(d().negocioId)).data.estado == 'activo'
         && get(/databases/$(database)/documents/negocios/$(d().negocioId)).data.get('bloqueoCobro', false) != true
         && d().keys().hasOnly(['codigo', 'negocioId', 'negocio', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'km', 'total', 'entrega', 'destino', 'nota',
-             'pago', 'operacion', 'montoLeido', 'coincide', 'fechaOk', 'pagaCon', 'captura', 'estado', 'dia', 'mes', 'creado', 'servicio', 'mayorEdad', 'solicitud'])
+             'pago', 'operacion', 'montoLeido', 'coincide', 'fechaOk', 'pagaCon', 'captura', 'estado', 'dia', 'mes', 'creado', 'servicio', 'mayorEdad', 'solicitud', 'comprobante'])
         && d().estado in ['nuevo', 'por-validar'] && (d().estado == 'nuevo') == (d().pago in ['Efectivo', 'A coordinar'])
         && d().entrega in ['delivery', 'recojo', 'servicio']
         && d().items is list && d().items.size() > 0 && d().items.size() <= 60
@@ -254,7 +260,7 @@ service cloud.firestore {
       // Solo el negocio avanza los estados; no puede cambiar lo que pidió el cliente ni los montos
       allow update: if (logueado() && resource.data.clienteUid == request.auth.uid && soloCambia(['rastreo']) && !('rastreo' in resource.data))
         || (logueado() && (resource.data.negocioId == request.auth.uid || (admin() && resource.data.negocioId.matches('demo-.*')))
-        && !cambia(['codigo', 'negocioId', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'total', 'destino', 'creado', 'dia', 'mes']))
+        && !cambia(['codigo', 'negocioId', 'clienteUid', 'cliente', 'items', 'subtotal', 'envio', 'total', 'destino', 'creado', 'dia', 'mes', 'comprobante']))
         // El repartidor lo toma: solo si nadie lo tiene y ganó la oferta en la misma operación
         || (repActivo() && resource.data.get('repUid', null) == null && d().repUid == request.auth.uid && d().repartidor.uid == request.auth.uid
             && getAfter(/databases/$(database)/documents/ofertas/$(pid)).data.tomadoPor == request.auth.uid

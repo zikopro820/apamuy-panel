@@ -84,8 +84,9 @@ function formNegocio(box, n) {
       ${fld("yapeNum", "Número de Yape", a.yapeNum || "")}${fld("yapeTitular", "Yape a nombre de", a.yapeTitular || "")}<div class="fld full"><span>QR de Yape</span>${foto("yapeQR", "Subir QR de Yape", 600)}</div>
       ${fld("plinNum", "Número de Plin", a.plinNum || "")}${fld("plinTitular", "Plin a nombre de", a.plinTitular || "")}<div class="fld full"><span>QR de Plin</span>${foto("plinQR", "Subir QR de Plin", 600)}</div>
       ${fld("contraEntrega", "Aceptar efectivo al recibir", a.contraEntrega !== false, { type: "checkbox", full: true })}</div>
-    <h2>${ico("file")} Datos del titular</h2><div class="g2">${fld("docTipo", "Documento", (a.documento || {}).tipo || "RUC", { opts: ["RUC", "DNI"] })}${fld("docNum", "Número", (a.documento || {}).numero || "", { req: true, extra: 'inputmode="numeric" maxlength="11"' })}
+    <h2>${ico("file")} Datos del titular</h2><div class="g2">${fld("docTipo", "Documento", (a.documento || {}).tipo || "RUC", { opts: ["RUC", "DNI"] })}<div class="doc-v">${fld("docNum", "Número", (a.documento || {}).numero || "", { req: true, extra: 'inputmode="numeric" maxlength="11"' })}${CONF.verificarDni ? `<button type="button" class="btn btn-pri" id="docV">Verificar</button>` : ""}</div>
       ${fld("docNombre", "Razón social o nombre del titular", (a.documento || {}).nombre || "", { req: true, full: true })}</div>
+      <small id="docM" class="${(a.documento || {}).verificado ? "ok-t" : "muted"}">${(a.documento || {}).verificado ? `✓ Verificado con ${(a.documento || {}).tipo === "DNI" ? "RENIEC" : "SUNAT"}${(a.documento || {}).estado ? " · " + esc(a.documento.estado) + (a.documento.condicion ? " · " + esc(a.documento.condicion) : "") : ""}` : CONF.verificarDni ? "Escribe tu RUC o DNI y toca «Verificar»: el nombre se llena solo." : ""}</small>
     ${n ? "" : `<label class="chk full terms"><input type="checkbox" name="acepto"><span>Acepto que Apamuy cobre una comisión del <b>${pctDe(null)}%</b> sobre la comida de cada pedido entregado por la app, que pagaré cada semana. Si no pago en el plazo, mi negocio se oculta de la app hasta ponerme al día.</span></label>`}
     <p class="l-err" id="nErr" role="alert"></p><div class="f-end"><button class="btn btn-pri btn-lg">${ico("check")} ${n ? "Guardar cambios" : "Enviar para revisión"}</button></div></form>`;
   const F = $("#nF", box), err = $("#nErr", box);
@@ -104,6 +105,20 @@ function formNegocio(box, n) {
   const ponerRadio = () => { const m = maxKmRubro(sRub.value), i = $("[name=radioKm]", F); i.max = m; i.placeholder = `${m} (máximo)`;
     $("#nRadioH", F).textContent = `Hasta ${m} km para tu rubro. Vacío = ${m} km. Los clientes más lejos te verán en «Más lejos · solo para recoger».`; };
   sRub.onchange = () => { ponerRubro(); ponerRadio(); }; ponerRubro(); ponerRadio();
+  // Verificar RUC (SUNAT) o DNI (RENIEC) del titular: lo consulta el servidor y el admin ve «✓ verificado»
+  const ad = a.documento || {}; DOCV = ad.verificado ? { numero: ad.numero, estado: ad.estado, condicion: ad.condicion } : null;
+  $("[name=docNum]", F).addEventListener("input", e => { e.target.value = e.target.value.replace(/\D/g, ""); if (DOCV && DOCV.numero !== e.target.value) { DOCV = null; const m = $("#docM"); m.className = "muted"; m.textContent = "Toca «Verificar»."; } });
+  if ($("#docV", F)) $("#docV", F).onclick = async () => {
+    const tipo = $("[name=docTipo]", F).value, num = $("[name=docNum]", F).value, m = $("#docM"), b = $("#docV", F);
+    if (tipo === "DNI" ? !/^\d{8}$/.test(num) : !rucOk(num)) { m.className = "err"; m.textContent = tipo === "DNI" ? "El DNI tiene 8 números." : "El RUC tiene 11 números y empieza con 10 o 20."; return; }
+    b.disabled = true; b.textContent = "Consultando…"; m.className = "muted"; m.textContent = `Consultando en ${tipo === "DNI" ? "RENIEC" : "SUNAT"}…`;
+    try {
+      if (tipo === "DNI") { const r = await llamarServidor("verificarDni", { dni: num, para: "registro" }); $("[name=docNombre]", F).value = r.nombre; DOCV = { numero: num }; m.className = "ok-t"; m.textContent = `✓ ${r.nombre} · verificado con RENIEC`; }
+      else { const r = await llamarServidor("verificarRuc", { ruc: num, para: "registro" }); $("[name=docNombre]", F).value = r.razonSocial; DOCV = { numero: num, estado: r.estado, condicion: r.condicion };
+        const ok = r.estado === "ACTIVO"; m.className = ok ? "ok-t" : "err"; m.textContent = ok ? `✓ ${r.razonSocial} · ${r.estado}${r.condicion ? " · " + r.condicion : ""} en SUNAT` : `⚠ En SUNAT figura como «${r.estado}». Revisa tu RUC.`; }
+    } catch (x) { m.className = "err"; m.textContent = errConsulta(x, tipo === "DNI" ? "ese DNI" : "ese RUC"); }
+    b.disabled = false; b.textContent = "Verificar";
+  };
   $$("[data-img]", F).forEach(i => i.onchange = async e => { const f = e.target.files[0], k = e.target.dataset.img; if (!f) return; IMG[k] = await redimensionar(f, +e.target.dataset.w, .8, k.endsWith("QR") ? "image/png" : "image/jpeg"); $("#pv_" + k).style.backgroundImage = `url('${IMG[k]}')`; });
   F.onsubmit = async e => {
     e.preventDefault(); err.textContent = ""; const d = datosForm(F);
@@ -123,7 +138,7 @@ function formNegocio(box, n) {
       const data = { nombre: d.nombre, rubro: d.rubro, tipo: d.tipo, registro: rubroDe(d.rubro).requiereRegistro ? d.registro : "", departamento: d.departamento, provincia: d.provincia, distrito: d.distrito, prov: provKey(d.departamento, d.provincia), descripcion: d.descripcion, telefono: d.telefono.replace(/\D/g, ""), whatsapp: wsp.length === 9 ? "51" + wsp : wsp, direccion: d.direccion, referencia: d.referencia, ubic: pos,
         abre: d.abre, cierra: d.cierra, dias, delivery: d.delivery, recojo: d.recojo, radioKm: +d.radioKm > 0 ? Math.min(Math.round(+d.radioKm), maxKmRubro(d.rubro)) : 0, tiempo: d.tiempo, pedidoMinimo: +d.pedidoMinimo || 0, extrasGratis: d.extras.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 20),
         pagoYape: d.pagoYape, pagoPlin: d.pagoPlin, contraEntrega: d.contraEntrega, yapeNum: d.yapeNum, yapeTitular: d.yapeTitular, plinNum: d.plinNum, plinTitular: d.plinTitular, pagoTransf: false,
-        documento: { tipo: d.docTipo, numero: d.docNum, nombre: d.docNombre }, ...up, actualizado: new Date().toISOString() };
+        documento: { tipo: d.docTipo, numero: String(d.docNum).replace(/\D/g, ""), nombre: d.docNombre, ...(DOCV && DOCV.numero === String(d.docNum).replace(/\D/g, "") ? { verificado: true, estado: DOCV.estado || "", condicion: DOCV.condicion || "" } : {}) }, ...up, actualizado: new Date().toISOString() };
       if (!n) Object.assign(data, { owner: YO.uid, email: YO.email, estado: "pendiente", creado: new Date().toISOString(), aceptoComision: pctDe(null) });
       await DB.set("negocios", YO.uid, data); toast(n ? "Cambios guardados · ya se ven en la app" : "¡Listo! Enviamos tu negocio para revisión");
       if (!n) location.reload(); else { NEG = { ...NEG, ...data }; marcaPanel(); b.disabled = false; b.innerHTML = `${ico("check")} Guardar cambios`; }
@@ -193,7 +208,7 @@ function vigilar() {
 /* ================= NEGOCIO · 🔍 BUSCAN REPUESTOS y 🚨 AUXILIO =================
    Al cliente le llega lo que respondas: precio, calidad, nota y foto. Si te elige, te llega como pedido normal. */
 const AUX_KM = 30;
-let SOLS = [], SOLS_T = [], VSOL = null, MISR = {};
+let SOLS = [], SOLS_T = [], VSOL = null, MISR = {}, DOCV = null;
 const solVisible = s => !NEG.bloqueoCobro && s.rubros && s.rubros.includes(NEG.rubro) && new Date(s.vence) > Date.now() && s.clienteUid !== NEG.id
   && (s.tipo !== "auxilio" || (NEG.ubic && s.ubic && distanciaKm(NEG.ubic, s.ubic) <= AUX_KM));
 function filtrarSol() {
@@ -267,6 +282,8 @@ VIEWS.pedidos = async silencioso => {
       <b class="ped-n">${esc(p.cliente.nombre)} <a class="tel" href="tel:${esc(p.cliente.celular)}">📞 ${esc(p.cliente.celular)}</a></b>${p.mayorEdad ? `<span class="st warn">🔞 Pedir DNI al entregar</span>` : ""}
       ${p.servicio ? `<p class="ped-nota">🔧 ${esc(p.servicio.detalle)}<br><small>${p.servicio.auxilio ? `<b class="neg">🚨 AUXILIO MECÁNICO</b>${p.servicio.llegaMin ? ` · dijiste ~${p.servicio.llegaMin} min` : ""}` : p.servicio.lugar === "domicilio" ? "🏠 A domicilio" : "En el taller"}${p.servicio.fecha ? " · " + fmtFH(p.servicio.fecha) : ""}</small>
         ${p.servicio.auxilio && p.destino ? `<br><a class="btn btn-pri btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.destino.lat},${p.destino.lng}">${ico("map")} Cómo llegar</a>${p.destino.referencia ? ` <small>📍 ${esc(p.destino.referencia)}</small>` : ""}` : ""}</p>` : ""}<ul class="ped-it">${(p.items || []).map(i => `<li><b>${i.cant}×</b> ${esc(i.n)}${detItem(i).map(d => `<small>${esc(d)}</small>`).join("")}</li>`).join("")}</ul>
+      ${p.comprobante ? `<div class="cmp-p ${p.comprobanteEmitido ? "ok" : ""}">🧾 <b>${p.comprobante.tipo === "factura" ? "FACTURA" : "BOLETA"}</b>${p.comprobante.doc ? ` · ${p.comprobante.tipo === "factura" ? "RUC" : "DNI"} <b class="mono">${esc(p.comprobante.doc)}</b> · ${esc(p.comprobante.nombre)}${p.comprobante.direccion ? `<small>${esc(p.comprobante.direccion)}</small>` : ""}${p.comprobante.verificado ? ` <span class="st ok">✓ ${p.comprobante.tipo === "factura" ? "SUNAT" : "RENIEC"}</span>` : ""}` : " simple (sin DNI)"}
+        <div class="acts-g">${p.comprobanteEmitido ? `<span class="st ok">✅ Emitida ${esc(p.comprobanteEmitido.numero)}</span>${p.comprobanteEmitido.url ? `<a class="btn btn-light btn-xs" href="${esc(p.comprobanteEmitido.url)}" target="_blank" rel="noopener">Ver</a>` : ""}` : `${p.comprobante.doc ? `<button class="btn btn-light btn-xs" data-pa="cmpCopiar|${esc(p.id)}">${ico("file")} Copiar datos</button>` : ""}<button class="btn btn-pri btn-xs" data-pa="cmpEmitir|${esc(p.id)}">${ico("check")} Ya la emití</button>`}</div></div>` : ""}
       ${p.nota ? `<p class="ped-nota">📝 ${esc(p.nota)}</p>` : ""}<p><b>${p.entrega === "servicio" ? "Precio" : (NEG.rubro || "comida") === "comida" ? "Comida" : "Productos"} ${S(p.subtotal)}</b>${p.envio ? ` · delivery ${S(p.envio)}` : ""} · ${esc(p.pago)}${p.pagaCon ? ` · paga con ${S(p.pagaCon)} → vuelto ${S(p.pagaCon - p.total)}` : ""}${p.pagado ? ` <span class="st ok">Pagado</span>` : ""}</p>
       ${p.entrega === "delivery" && p.destino ? `<p class="muted">📍 ${esc(p.destino.texto)}${p.destino.referencia ? " · " + esc(p.destino.referencia) : ""} · ${p.km} km · <a href="https://maps.google.com/?q=${p.destino.lat},${p.destino.lng}" target="_blank" rel="noopener">Ver mapa</a></p>` : ""}
       ${PT === "activos" ? lineaRep(p) : p.repartidor ? `<p class="rep-l">${vehTxt(p.repartidor.vehiculo)} ${esc(p.repartidor.nombre)}</p>` : ""}
@@ -291,6 +308,20 @@ function accionesPedido(p) {
     listo: (p.entrega !== "delivery" ? B("entregar", `${ico("check")} Recogido${p.pagado ? "" : " y cobrado"}`, "btn-pri") : p.repartidor ? B("alRep", `${ico("bike")} Entregar a ${esc(p.repartidor.nombre.split(" ")[0])}`, "btn-pri") : B("salio", `${ico("bike")} Lo llevo yo`)) + B("anular", "Anular"),
     camino: p.repartidor ? (!p.pagado && p.pago === "Efectivo" ? B("cobrarRep", `${ico("cash")} Cobré la comida al repartidor`) : "") : B("entregar", `${ico("check")} Entregado${p.pagado ? "" : " y cobrado"}`, "btn-pri") }[p.estado] || "";
 }
+// 🧾 El negocio emite la boleta/factura en su sistema (SUNAT SOL, Nubefact…) y aquí pone el número y, si quiere, el PDF
+function emitirComprobante(p) {
+  const c = p.comprobante || {}; let ARCH = "", EXT = "pdf";
+  modal(`${c.tipo === "factura" ? "Factura" : "Boleta"} emitida`, `<p class="muted">Emítela en tu sistema de siempre y anota aquí el número. El cliente lo verá en su pedido.</p>
+    <div class="g2">${fld("numero", "Serie y número", "", { req: true, ph: c.tipo === "factura" ? "Ej. F001-00000123" : "Ej. B001-00000123" })}
+    <div class="fld"><span>PDF o foto del comprobante (opcional)</span><div class="foto-up"><span class="fp-logo" id="cmV">📄</span><label class="btn btn-light btn-sm">${ico("file")} Subir archivo<input type="file" accept="application/pdf,image/*" id="cmF" hidden></label></div></div></div>`,
+    async d => {
+      const numero = d.numero.trim().toUpperCase().slice(0, 30); if (!numero) { toast("Escribe el número del comprobante", true); return false; }
+      const url = ARCH ? await subirFoto(`comprobantes/${NEG.id}/${p.id}-${Date.now().toString(36)}.${EXT}`, ARCH) : "";
+      await DB.set("pedidos", p.id, { comprobanteEmitido: { numero, url, fecha: new Date().toISOString() } }); toast("✅ Listo: el cliente ya lo ve en su pedido");
+    }, "Guardar", { alAbrir: F => { $("#cmF", F).onchange = async e => { const f = e.target.files[0]; if (!f) return;
+      if (f.size > 3 * 1024 * 1024) return toast("El archivo pesa más de 3 MB", true);
+      if (f.type === "application/pdf") { ARCH = await leerArchivo(f); EXT = "pdf"; $("#cmV").textContent = "✅"; } else { ARCH = await redimensionar(f, 1400, .8); EXT = "jpg"; $("#cmV").style.backgroundImage = `url('${ARCH}')`; $("#cmV").textContent = ""; } }; } });
+}
 // Repartidor del pedido: quién lo lleva o si se está buscando uno
 function lineaRep(p) {
   if (p.entrega !== "delivery" || ["por-validar", "nuevo"].includes(p.estado)) return "";
@@ -313,6 +344,9 @@ const cerrarOferta = p => p.oferta ? [{ op: "set", col: "ofertas", id: p.id, dat
 const msgCli = (p, t) => `Hola ${String(p.cliente.nombre || "").split(" ")[0]} 👋 te escribe *${NEG.nombre}* por tu pedido de Apamuy.\n\n${t}\n\nSigue tu pedido aquí: ${AP.web}/pedido?c=${encodeURIComponent(p.codigo)}`;
 function movimiento(m) { return { op: "set", col: `negocios/${NEG.id}/movimientos`, id: codigo("MV"), data: { fecha: HOY(), hora: new Date().toISOString(), ...m, monto: r2(m.monto) } }; }
 async function accionPedido(a, p) {
+  if (a === "cmpCopiar") { const c = p.comprobante, t = `${c.tipo === "factura" ? "FACTURA" : "BOLETA"}\n${c.tipo === "factura" ? "RUC" : "DNI"}: ${c.doc}\n${c.tipo === "factura" ? "Razón social" : "Nombre"}: ${c.nombre}${c.direccion ? `\nDirección: ${c.direccion}` : ""}\nPedido: ${p.codigo} · Total: ${S(p.total)}`;
+    return navigator.clipboard?.writeText(t).then(() => toast("📋 Datos copiados: pégalos en tu sistema de facturación"), () => modal("Datos del comprobante", `<pre class="pre">${esc(t)}</pre>`, null)); }
+  if (a === "cmpEmitir") return emitirComprobante(p);
   const upd = data => ({ op: "set", col: "pedidos", id: p.id, data: { ...data, actualizado: new Date().toISOString() } });
   const fin = async (ops, msg, w) => { await DB.batch(ops); toast(msg); if (w) abrirWA(p.cliente.celular, w); };
   if (a === "comanda") return comanda(p);
@@ -512,11 +546,18 @@ VIEWS.negocios = async () => {
       <td><button class="btn btn-light btn-sm" data-vn="${esc(n.id)}">Ver</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin negocios.</td></tr>`}</tbody></table></div></section>`;
   $("#view").onclick = e => { const f = e.target.closest("[data-nf]"); if (f) { NF = f.dataset.nf; return VIEWS.negocios(); } const v = e.target.closest("[data-vn]"); if (v) verNegocio(ns.find(n => n.id === v.dataset.vn)); };
 };
+// Lo que verificó el SERVIDOR (no lo que dice el formulario): verificaciones/{uid}
+function verDoc(doc, ver) {
+  if (!ver) return `<span class="st mute">sin verificar</span>`;
+  if (doc.tipo === "DNI") return ver.dni === doc.numero ? `<span class="st ok">✓ RENIEC: ${esc(ver.nombre)}</span>` : `<span class="st mute">sin verificar</span>`;
+  const r = ver.ruc; if (!r || r.ruc !== doc.numero) return `<span class="st mute">sin verificar</span>`;
+  return r.estado === "ACTIVO" ? `<span class="st ok">✓ SUNAT: ${esc(r.estado)}${r.condicion ? " · " + esc(r.condicion) : ""}</span>` : `<span class="st bad">⚠ SUNAT: ${esc(r.estado)}${r.condicion ? " · " + esc(r.condicion) : ""}</span>`;
+}
 async function verNegocio(n) {
-  const [cats, prods] = await Promise.all([DB.list(`negocios/${n.id}/categorias`), DB.list(`negocios/${n.id}/productos`)]), doc = n.documento || {};
+  const [cats, prods, ver] = await Promise.all([DB.list(`negocios/${n.id}/categorias`), DB.list(`negocios/${n.id}/productos`), DB.get("verificaciones", n.id).catch(() => null)]), doc = n.documento || {};
   modal(n.nombre, `<div class="nv">${n.portada ? `<img class="nv-p" src="${esc(n.portada)}" alt="">` : ""}<div class="nv-h">${n.logo ? `<img src="${esc(n.logo)}" alt="">` : ""}<div><b>${esc(n.nombre)}</b> ${estN(n.estado)}<small>${esc(n.tipo || "")} · registrado ${fmtF(n.creado)}</small></div></div>
     <dl class="dl"><dt>Dueño</dt><dd>${esc(n.email || "")}</dd><dt>Celular</dt><dd>${esc(n.telefono || "")} ${n.whatsapp ? `· <a href="${wa(n.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</dd>
-      <dt>Rubro</dt><dd>${esc(rubroDe(n.rubro).nombre)} · ${esc(n.tipo || "")}${n.registro ? ` · ${esc(rubroDe(n.rubro).requiereRegistro || "Registro")}: <b>${esc(n.registro)}</b>` : ""}</dd><dt>Ciudad</dt><dd>${esc(n.distrito || "")}, ${esc(n.provincia || "")} (${esc(n.departamento || "")})</dd><dt>${esc(doc.tipo || "Doc.")}</dt><dd>${esc(doc.numero || "")} · ${esc(doc.nombre || "")}</dd><dt>Dirección</dt><dd>${esc(n.direccion || "")}${n.referencia ? " · " + esc(n.referencia) : ""}${n.ubic ? ` · <a href="https://maps.google.com/?q=${n.ubic.lat},${n.ubic.lng}" target="_blank" rel="noopener">Ver en mapa</a>` : ""}</dd>
+      <dt>Rubro</dt><dd>${esc(rubroDe(n.rubro).nombre)} · ${esc(n.tipo || "")}${n.registro ? ` · ${esc(rubroDe(n.rubro).requiereRegistro || "Registro")}: <b>${esc(n.registro)}</b>` : ""}</dd><dt>Ciudad</dt><dd>${esc(n.distrito || "")}, ${esc(n.provincia || "")} (${esc(n.departamento || "")})</dd><dt>${esc(doc.tipo || "Doc.")}</dt><dd>${esc(doc.numero || "")} · ${esc(doc.nombre || "")} ${verDoc(doc, ver)}</dd><dt>Dirección</dt><dd>${esc(n.direccion || "")}${n.referencia ? " · " + esc(n.referencia) : ""}${n.ubic ? ` · <a href="https://maps.google.com/?q=${n.ubic.lat},${n.ubic.lng}" target="_blank" rel="noopener">Ver en mapa</a>` : ""}</dd>
       <dt>Horario</dt><dd>${esc(n.abre)} a ${esc(n.cierra)} · ${(n.dias || []).map(i => DIAS[i]).join(", ")}</dd><dt>Pagos</dt><dd>${[n.pagoYape && "Yape " + esc(n.yapeNum || ""), n.pagoPlin && "Plin " + esc(n.plinNum || ""), n.contraEntrega && "Efectivo"].filter(Boolean).join(" · ")}</dd>
       <dt>Carta</dt><dd>${cats.length} categoría(s) · ${prods.length} plato(s)${prods.length ? ": " + esc(prods.slice(0, 6).map(p => p.nombre).join(", ")) + (prods.length > 6 ? "…" : "") : ""}</dd>${n.motivo ? `<dt>Nota</dt><dd>${esc(n.motivo)}</dd>` : ""}</dl>
     <div class="g2">${fld("estado", "Estado", n.estado, { opts: [["pendiente", "En revisión"], ["activo", "Activo (aparece en la app)"], ["suspendido", "Suspendido"], ["rechazado", "Rechazado"]] })}${fld("comision", "Comisión % (vacío = general " + CONF.comision + "%)", n.comision ?? "", { type: "number", extra: 'min="0" max="50" step="0.5"' })}
@@ -631,6 +672,7 @@ VIEWS.config = async () => {
     <h2>${ico("qr")} Tu Yape (aquí te pagan repartidores)</h2><div class="g2">${fld("cYape", "Número de Yape", c.cobro.yape || "")}${fld("cTit", "A nombre de", c.cobro.titular || "")}
       <div class="fld full"><span>QR de Yape</span><div class="foto-up"><span class="fp-yapeQR" id="cQrV" style="background-image:url('${esc(imgUrl(c.cobro.qr))}')"></span><label class="btn btn-light btn-sm">${ico("camera")} Subir QR<input type="file" accept="image/*" id="cQr" hidden></label></div></div></div>
     <h2>${ico("bell")} Avisos al celular (notificaciones)</h2>${fld("vapid", "Clave pública de notificaciones (VAPID)", c.vapid || "", { full: true, ph: "Empieza con B… (Firebase → Configuración del proyecto → Cloud Messaging → Certificados web push)", help: "Es pública: no es una contraseña. Sin ella no se pueden activar los avisos." })}
+    <h2>${ico("check")} DNI (RENIEC) y RUC (SUNAT)</h2>${fld("verificarDni", "Activar consultas de DNI y RUC (Decolecta)", !!c.verificarDni, { type: "checkbox", help: "Repartidores y negocios verifican su DNI/RUC al registrarse, y el cliente llena su boleta o factura solo. Necesitas el token guardado en el servidor (firebase functions:secrets:set DECOLECTA_TOKEN)." })}
     <h2>${ico("wa")} Soporte</h2>${fld("soporte", "WhatsApp de soporte de Apamuy", c.soporte || "")}
     <div class="f-end"><button class="btn btn-pri">${ico("check")} Guardar</button></div></form>
     <section class="card" id="tarifas"></section>`;
@@ -640,7 +682,7 @@ VIEWS.config = async () => {
   F.oninput = ej; ej(); mapaPin($("#cMapa"), pos, q => pos = q); let QR = c.cobro.qr || "";
   $("#cQr").onchange = async e => { const f = e.target.files[0]; if (!f) return; QR = await redimensionar(f, 600, .9, "image/png"); $("#cQrV").style.backgroundImage = `url('${QR}')`; };
   F.onsubmit = async e => { e.preventDefault(); const v = datosForm(F);
-    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 15, maxKmGrande: +v.maxKmGrande || 50 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""), vapid: (v.vapid || "").trim(),
+    await DB.set("config", "general", { comision: +v.comision || 0, delivery: { base: +v.base || 0, porKm: +v.porKm || 0, maxKm: +v.maxKm || 15, maxKmGrande: +v.maxKmGrande || 50 }, centro: pos, tipos: v.tipos.split("\n").map(x => x.trim()).filter(Boolean), soporte: v.soporte.replace(/\D/g, ""), vapid: (v.vapid || "").trim(), verificarDni: !!v.verificarDni,
       rep: { comision: +v.repCom || 0, casaca: +v.casaca || 0 }, envio: { minimo: +v.eMin || 5, base: +v.eBase || 0, porKm: +v.ePorKm || 0, factorGrande: +v.eGrande || 1, maxKm: +v.eMax || 300 }, cobro: { yape: v.cYape, titular: v.cTit, qr: await subirFoto(`web/cobro/yape-${Date.now().toString(36)}.png`, QR) } });
     await cargarConfig(); toast("Configuración guardada"); };
 };
@@ -791,12 +833,13 @@ VIEWS.repartidores = async () => {
 async function verRepartidor(r) {
   const m = HOY().slice(0, 7), [ps, pg, es, pub] = await Promise.all([DB.list("pedidos", ["repUid", "==", r.id], ["mes", "==", m]).catch(() => []), DB.list("pagosRep", ["uid", "==", r.id]).catch(() => []),
     DB.list("envios", ["repUid", "==", r.id], ["mes", "==", m]).catch(() => []), DB.get("repPublico", r.id).catch(() => null)]);
+  const ver0 = await DB.get("verificaciones", r.id).catch(() => null), ver = ver0 && ver0.nombre ? ver0 : null;   // lo escribe solo el servidor
   const ent = [...ps.filter(p => p.estado === "entregado"), ...es.filter(e => e.estado === "entregado").map(e => ({ envio: e.precio }))], gan = ent.reduce((a, p) => a + (+p.envio || 0), 0), dom = r.domicilio || {}, cas = r.casaca || {};
   const docs = [["fotoPerfil", "Foto de perfil"], ["foto", "Selfie"], ["dniFrente", "DNI adelante"], ["dniReverso", "DNI atrás"], ["licenciaFoto", "Licencia"], ["soatFoto", "SOAT"], ["vehiculoFoto", "Vehículo"], ["antecedentes", "Antecedentes"], ["firma", "Firma"]].filter(([k]) => r[k]);
   modal(r.nombre, `${r.fotoNueva ? `<div class="alert warn foto-n"><img src="${esc(r.fotoNueva)}" alt="Foto nueva"><span><b>Foto de perfil nueva por aprobar.</b> Compárala con su DNI: es la que verán los clientes.</span>${fld("aprobarFoto", "Aprobar foto nueva", true, { type: "checkbox" })}</div>` : ""}
     <p class="muted sm">⭐ ${estrellasTxt(promEstrellas(pub), pub?.estrellasN)} · ${pub?.entregas || 0} entregas en total</p><div class="docs">${docs.map(([k, t]) => `<a class="doc" data-doc="${k}" target="_blank" rel="noopener"><span class="doc-i">…</span><small>${t}</small></a>`).join("")}${cas.captura ? `<a class="doc" data-doc="casaca" target="_blank" rel="noopener"><span class="doc-i">…</span><small>Pago casaca</small></a>` : ""}</div>
     <p class="muted sm">${ico("lock")} Solo tú ves estos documentos. Tócalos para verlos en grande. Compara la selfie con la foto del DNI.</p>
-    <dl class="dl"><dt>Estado</dt><dd>${estR(r.estado)}</dd><dt>DNI</dt><dd>${esc(r.dni)} · nació ${fmtF(r.nacimiento, { day: "numeric", month: "short", year: "numeric" })}</dd><dt>Celular</dt><dd>${esc(r.celular)} · <a href="${wa(r.celular)}" target="_blank" rel="noopener">WhatsApp</a></dd><dt>Correo</dt><dd>${esc(r.email || "")}</dd>
+    <dl class="dl"><dt>Estado</dt><dd>${estR(r.estado)}</dd><dt>DNI</dt><dd>${esc(r.dni)} ${ver ? (ver.dni === r.dni ? `<span class="st ok">✓ RENIEC: ${esc(ver.nombre)}</span>` : `<span class="st bad">⚠ verificó otro DNI (${esc(ver.dni)})</span>`) : CONF.verificarDni ? `<span class="st mute">sin verificar</span>` : ""} · nació ${fmtF(r.nacimiento, { day: "numeric", month: "short", year: "numeric" })}</dd><dt>Celular</dt><dd>${esc(r.celular)} · <a href="${wa(r.celular)}" target="_blank" rel="noopener">WhatsApp</a></dd><dt>Correo</dt><dd>${esc(r.email || "")}</dd>
       <dt>Vehículo</dt><dd>${vehTxt(r.vehiculo)}${r.marca ? " " + esc(r.marca) : ""}${r.color ? " · " + esc(r.color) : ""}${r.placa ? ` · placa <b>${esc(r.placa)}</b> · licencia ${esc(r.licencia || "")}` : ""}</dd>${r.soatVence ? `<dt>SOAT</dt><dd>vence ${fmtF(r.soatVence, { day: "numeric", month: "short", year: "numeric" })} ${soatAl(r)}</dd>` : ""}
       <dt>Trabaja en</dt><dd>${esc(r.provincia)} (${esc(r.departamento)})</dd><dt>Domicilio</dt><dd>${esc(dom.texto || "")}${dom.referencia ? " · " + esc(dom.referencia) : ""}${dom.distrito ? ", " + esc(dom.distrito) : ""}${dom.lat != null ? ` · <a href="https://maps.google.com/?q=${dom.lat},${dom.lng}" target="_blank" rel="noopener">Ver en mapa</a>` : ""}</dd>
       <dt>Casaca</dt><dd>${S(cas.monto)} · talla ${esc(cas.talla || r.talla || "")} · op. ${esc(cas.operacion || "")}</dd><dt>Declaración</dt><dd>Firmada ${fmtFH((r.declaracion || {}).fecha)} · consentimiento de datos ${r.consentimiento ? "✅" : "❌"}</dd>
