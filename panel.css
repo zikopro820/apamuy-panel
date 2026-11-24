@@ -323,3 +323,17 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .dto-p { display: block; font-size: .72rem; font-weight: 700; color: #8a6d00; } 
 .star-k { color: #f5a524; } .star-o { color: #e2dccf; }
 .rt i { font-style: normal; color: #f5a524; }
+
+/* Aviso de ubicación simple */
+.ub-ayuda summary { cursor: pointer; text-decoration: underline; } .ub-ayuda .pasos-ub li { margin-bottom: 6px; }
+
+/* Banners con imagen completa: vista previa igual a la app */
+.bnp-w { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-top: 6px; }
+.bnp { position: relative; width: 240px; aspect-ratio: 1 / 1; border-radius: 18px; overflow: hidden; background: #E63946; box-shadow: 0 4px 14px rgba(26, 20, 48, .15); flex: none; }
+.bnp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.bnp.con-t::after { content: ""; position: absolute; inset: auto 0 0 0; height: 45%; background: linear-gradient(transparent, rgba(0, 0, 0, .55)); }
+.bnp h3 { position: absolute; left: 12px; bottom: 12px; right: 46%; margin: 0; color: #fff; font-size: .95rem; line-height: 1.15; z-index: 1; text-shadow: 0 2px 6px rgba(0, 0, 0, .45); }
+.bnp .go { position: absolute; right: 10px; bottom: 10px; z-index: 1; background: #fff; color: #E63946; font-weight: 800; font-size: .75rem; padding: 7px 11px; border-radius: 999px; box-shadow: 0 3px 10px rgba(0, 0, 0, .25); white-space: nowrap; }
+.bnp em { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; color: #fff; font-style: normal; font-weight: 700; font-size: .85rem; }
+.bnp [hidden] { display: none; } .bnp-a { display: grid; gap: 8px; align-content: start; max-width: 260px; }
+.bn-c.con-img img { border-radius: 12px; border: 0; width: 70px; height: 70px; }
