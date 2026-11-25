@@ -60,9 +60,9 @@ service cloud.firestore {
       allow create: if yo() && d().estado == 'pendiente' && d().consentimiento == true
         && !('aprobado' in d()) && !('motivo' in d()) && !('revisado' in d());
       // Él edita sus datos (disponible, ubicación, SOAT) pero NO su estado. Si lo rechazaron, puede reenviar para revisión.
-      allow update: if (yo() && !cambia(['estado', 'aprobado', 'motivo', 'revisado', 'email', 'fotoPerfil']))
+      allow update: if (yo() && !cambia(['estado', 'aprobado', 'motivo', 'revisado', 'email', 'fotoPerfil', 'cargaDesde']))
                     || (yo() && resource.data.estado == 'rechazado' && d().estado == 'pendiente' && !cambia(['aprobado', 'revisado', 'email']))
-                    || (admin() && soloCambia(['estado', 'motivo', 'revisado', 'aprobado', 'disponible', 'fotoPerfil', 'fotoNueva']));
+                    || (admin() && soloCambia(['estado', 'motivo', 'revisado', 'aprobado', 'disponible', 'fotoPerfil', 'fotoNueva', 'cargaDesde']));
       allow delete: if admin();
     }
 
@@ -210,11 +210,15 @@ service cloud.firestore {
       allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || admin() || resource.data.repUid == request.auth.uid
         || (repActivo() && repDe(request.auth.uid).prov == resource.data.prov && resource.data.estado == 'buscando'));
       allow create: if logueado() && d().clienteUid == request.auth.uid && d().codigo == eid && d().estado == 'buscando'
-        && d().oferta is number && d().oferta >= 1 && d().oferta < 5000 && d().tamano in ['sobre', 'pequeno', 'grande'] && d().paga in ['envia', 'recibe']
-        && d().keys().hasOnly(['codigo', 'clienteUid', 'origen', 'destino', 'prov', 'interprov', 'km', 'tamano', 'contenido', 'paga', 'oferta', 'sugerido', 'estado', 'buscadoEn', 'rastreo', 'creado', 'dia', 'mes']);
+        && d().oferta is number && d().oferta >= 1 && d().paga in ['envia', 'recibe']
+        && ((d().get('tipo', 'envio') == 'envio' && d().oferta < 5000 && d().tamano in ['sobre', 'pequeno', 'grande']
+             && d().keys().hasOnly(['codigo', 'clienteUid', 'origen', 'destino', 'prov', 'interprov', 'km', 'tamano', 'contenido', 'paga', 'oferta', 'sugerido', 'estado', 'buscadoEn', 'rastreo', 'creado', 'dia', 'mes']))
+          // Mudanza: camioneta o camión, ahora o programada
+          || (d().tipo == 'mudanza' && d().oferta < 20000 && d().tamano == 'mudanza' && d().carga in ['pocas', 'cuarto', 'depa', 'casa'] && d().ayudantes is int && d().ayudantes >= 0 && d().ayudantes <= 3
+             && d().keys().hasOnly(['codigo', 'clienteUid', 'tipo', 'origen', 'destino', 'prov', 'interprov', 'km', 'tamano', 'contenido', 'paga', 'carga', 'ayudantes', 'pisoA', 'pisoB', 'ascA', 'ascB', 'programado', 'anillos', 'oferta', 'sugerido', 'estado', 'buscadoEn', 'rastreo', 'creado', 'dia', 'mes'])));
       allow update: if
         // Cliente: sube su oferta / vuelve a buscar
-        (cliente() && resource.data.estado == 'buscando' && d().estado == 'buscando' && soloCambia(['oferta', 'buscadoEn', 'actualizado']) && d().oferta is number && d().oferta < 5000)
+        (cliente() && resource.data.estado == 'buscando' && d().estado == 'buscando' && soloCambia(['oferta', 'buscadoEn', 'actualizado']) && d().oferta is number && d().oferta < 20000)
         // Cliente: cancela antes de que recojan el paquete
         || (cliente() && resource.data.estado in ['buscando', 'asignado'] && d().estado == 'cancelado' && soloCambia(['estado', 'actualizado']))
         // Cliente: elige una contraoferta (el precio debe ser el que mandó ese repartidor)
@@ -224,7 +228,8 @@ service cloud.firestore {
         // Repartidor: acepta el precio del cliente
         || (repActivo() && resource.data.estado == 'buscando' && d().estado == 'asignado' && d().repUid == request.auth.uid && d().repartidor.uid == request.auth.uid
             && d().precio == resource.data.oferta && repDe(request.auth.uid).prov == resource.data.prov
-            && (resource.data.tamano != 'grande' || repDe(request.auth.uid).vehiculo == 'carro')
+            && (resource.data.get('tipo', 'envio') == 'mudanza' ? repDe(request.auth.uid).vehiculo in ['camioneta', 'camion']
+                : (resource.data.tamano != 'grande' || repDe(request.auth.uid).vehiculo in ['carro', 'camioneta', 'camion']))
             && soloCambia(['estado', 'repUid', 'repartidor', 'precio', 'asignadoEn', 'actualizado']))
         // Su repartidor: ubicación, «recogí» y «entregado»; o soltarlo antes de recoger
         || (suRep() && soloCambia(['estado', 'repartidor', 'recogido', 'entregado', 'actualizado', 'repUid', 'precio', 'buscadoEn'])
@@ -243,8 +248,9 @@ service cloud.firestore {
       // Contraofertas: una por repartidor (id = su uid)
       match /ofertas/{rid} {
         allow read: if logueado() && (request.auth.uid == rid || admin() || get(/databases/$(database)/documents/envios/$(eid)).data.clienteUid == request.auth.uid);
-        allow create, update: if repActivo() && request.auth.uid == rid && d().repUid == rid && d().rep.uid == rid && d().precio is number && d().precio >= 1 && d().precio < 5000
-          && get(/databases/$(database)/documents/envios/$(eid)).data.estado == 'buscando';
+        allow create, update: if repActivo() && request.auth.uid == rid && d().repUid == rid && d().rep.uid == rid && d().precio is number && d().precio >= 1 && d().precio < 20000
+          && get(/databases/$(database)/documents/envios/$(eid)).data.estado == 'buscando'
+          && (get(/databases/$(database)/documents/envios/$(eid)).data.get('tipo', 'envio') != 'mudanza' || repDe(request.auth.uid).vehiculo in ['camioneta', 'camion']);
         allow delete: if logueado() && request.auth.uid == rid;
       }
     }
