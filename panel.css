@@ -345,3 +345,18 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .qr-i > div { flex: 1; min-width: 0; display: grid; } .qr-i small { color: #6b6478; }
 .qr-op { display: grid; gap: 10px; margin-top: 10px; } .qr-t { text-align: left; display: grid; gap: 2px; padding: 14px; border: 1.5px solid #E7E0EC; border-radius: 14px; background: #fff; cursor: pointer; font: inherit; }
 .qr-t:hover { border-color: #E63946; } .qr-t b { font-size: 1rem; } .qr-t small { color: #6b6478; }
+
+/* Mesas */
+.ms-lg { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 12px; font-size: .82rem; color: #6b6478; } .ms-lg i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 6px; vertical-align: -1px; }
+.ms-lg .r { background: #E63946; } .ms-lg .a { background: #F5B301; } .ms-lg .v { background: #2F9E62; } .ms-lg .g { background: #EEE8F2; }
+.ms-g { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.ms { background: #fff; border: 2px solid #EEE8F2; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 110px; }
+.ms > b { font-size: 1.15rem; } .ms > small { color: #6b6478; } .ms.lib > b { color: #A59FB2; }
+.ms.oc { border-color: #F5B301; background: #FFFBEF; } .ms.ab { border-color: #2F9E62; background: #F1FAF4; } .ms.nu { border-color: #E63946; background: #FFF1F2; box-shadow: 0 0 0 4px rgba(230, 57, 70, .12); }
+.ms-c { align-self: flex-start; font-size: .7rem; font-weight: 800; border-radius: 6px; padding: 2px 8px; background: #EEE8F2; color: #6b6478; }
+.nu .ms-c { background: #E63946; color: #fff; } .oc .ms-c { background: #F5B301; color: #1A1430; } .ab .ms-c { background: #2F9E62; color: #fff; }
+.ms-p { background: #fff; border: 1px solid #F1E3E5; border-radius: 12px; padding: 8px 10px; font-size: .85rem; display: grid; gap: 6px; } .ms-p.pc { border-color: #E63946; }
+.ms-p em { display: block; font-style: normal; color: #8A5A00; } .ms-p small { display: block; color: #6b6478; }
+.ms-b { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; } .ms-t { font-weight: 800; font-size: 1.1rem; }
+.ms-close { background: #1A1430; color: #fff; }
+.ms-cta > div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #eee; } .ms-cta small { display: block; color: #6b6478; } .ms-cta .t { font-weight: 800; font-size: 1.1rem; border: 0; }

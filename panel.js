@@ -47,7 +47,8 @@ function pantallaLogin(modo = "entrar") {
     if (!NEG) return pantallaRegistro();
     // Ferreterías y talleres: reciben las búsquedas de repuestos (y los talleres, el auxilio mecánico)
     const nav = recibeBusq(NEG.rubro) || NEG.rubro === "talleres" ? NAV_NEG.flatMap(x => x[0] === "pedidos" ? [x, ["solicitudes", "search", NEG.rubro === "talleres" ? "Repuestos y auxilio" : "Buscan repuestos"]] : [x]) : NAV_NEG;
-    armar(nav, "inicio");
+    const nav2 = (NEG.rubro || "comida") === "comida" && NEG.mesasActivo ? nav.flatMap(x => x[0] === "pedidos" ? [x, ["mesas", "grid", "Mesas"]] : [x]) : nav;
+    armar(nav2, "inicio"); if (typeof vigilarMesas === "function" && nav2 !== nav) vigilarMesas();
   });
 })();
 
@@ -79,6 +80,10 @@ function formNegocio(box, n) {
       <label class="fld"><span>Llevo delivery hasta (km)</span><input name="radioKm" type="number" min="1" step="1" value="${esc(a.radioKm || "")}" placeholder="Máximo"><small id="nRadioH"></small></label>
       ${fld("tiempo", "Tiempo que se muestra", a.tiempo || "", { ph: "30-40 min" })}${fld("pedidoMinimo", "Pedido mínimo para delivery (S/)", a.pedidoMinimo ?? 0, { type: "number", extra: 'min="0"' })}
       ${fld("extras", "Extras gratis (uno por línea, ej. cremas)", (a.extrasGratis || []).join("\n"), { type: "textarea", full: true, rows: 3, ph: "Mayonesa\nAjí\nKetchup" })}</div>
+    <div id="nMesas"><h2>${ico("grid")} Pedidos en mesa</h2><p class="muted sm">Tus clientes escanean el QR de su mesa, piden con su nombre y pagan al final en caja. <b>Sin comisión de Apamuy.</b></p><div class="g2">
+      ${fld("mesasActivo", "Recibir pedidos en mesa", !!a.mesasActivo, { type: "checkbox" })}${fld("mesasN", "Número de mesas", a.mesasN || "", { type: "number", extra: 'min="1" max="100"', ph: "Ej. 12" })}
+      ${fld("mesaAbrir", "Solo aceptar pedidos de mesas que la moza abrió (más seguro)", !!a.mesaAbrir, { type: "checkbox", full: true })}
+      ${n ? `<div class="full"><button type="button" class="btn btn-light btn-sm" id="qrMesas">${ico("grid")} Imprimir QR de mesas</button></div>` : ""}</div></div>
     <h2>${ico("cash")} Cómo te pagan los clientes</h2><p class="muted sm">El cliente te paga la comida <b>directo a ti</b>. El delivery lo cobra el repartidor.</p><div class="g2">
       ${fld("pagoYape", "Aceptar Yape", a.pagoYape !== false, { type: "checkbox" })}${fld("pagoPlin", "Aceptar Plin", a.pagoPlin !== false, { type: "checkbox" })}
       ${fld("yapeNum", "Número de Yape", a.yapeNum || "")}${fld("yapeTitular", "Yape a nombre de", a.yapeTitular || "")}<div class="fld full"><span>QR de Yape</span>${foto("yapeQR", "Subir QR de Yape", 600)}</div>
@@ -104,7 +109,9 @@ function formNegocio(box, n) {
   // Radio de delivery: cada negocio pone el suyo, sin pasar el máximo de Apamuy para su rubro
   const ponerRadio = () => { const m = maxKmRubro(sRub.value), i = $("[name=radioKm]", F); i.max = m; i.placeholder = `${m} (máximo)`;
     $("#nRadioH", F).textContent = `Hasta ${m} km para tu rubro. Vacío = ${m} km. Los clientes más lejos te verán en «Más lejos · solo para recoger».`; };
-  sRub.onchange = () => { ponerRubro(); ponerRadio(); }; ponerRubro(); ponerRadio();
+  const ponerMesas = () => { $("#nMesas", F).hidden = sRub.value !== "comida"; };
+  sRub.onchange = () => { ponerRubro(); ponerRadio(); ponerMesas(); }; ponerRubro(); ponerRadio(); ponerMesas();
+  $("#qrMesas", F)?.addEventListener("click", () => { const k = +$("[name=mesasN]", F).value; if (!(k >= 1)) return toast("Escribe cuántas mesas tienes", true); imprimirQRMesas({ ...NEG, mesasN: k }); });
   // Verificar RUC (SUNAT) o DNI (RENIEC) del titular: lo consulta el servidor y el admin ve «✓ verificado»
   const ad = a.documento || {}; DOCV = ad.verificado ? { numero: ad.numero, estado: ad.estado, condicion: ad.condicion } : null;
   $("[name=docNum]", F).addEventListener("input", e => { e.target.value = e.target.value.replace(/\D/g, ""); if (DOCV && DOCV.numero !== e.target.value) { DOCV = null; const m = $("#docM"); m.className = "muted"; m.textContent = "Toca «Verificar»."; } });
@@ -136,12 +143,12 @@ function formNegocio(box, n) {
       const up = {}; for (const k of Object.keys(IMG)) up[k] = await subirFoto(`negocios/${YO.uid}/${k}-${Date.now().toString(36)}.${k.endsWith("QR") ? "png" : "jpg"}`, IMG[k]);
       const wsp = d.whatsapp.replace(/\D/g, "") || d.telefono.replace(/\D/g, "");
       const data = { nombre: d.nombre, rubro: d.rubro, tipo: d.tipo, registro: rubroDe(d.rubro).requiereRegistro ? d.registro : "", departamento: d.departamento, provincia: d.provincia, distrito: d.distrito, prov: provKey(d.departamento, d.provincia), descripcion: d.descripcion, telefono: d.telefono.replace(/\D/g, ""), whatsapp: wsp.length === 9 ? "51" + wsp : wsp, direccion: d.direccion, referencia: d.referencia, ubic: pos,
-        abre: d.abre, cierra: d.cierra, dias, delivery: d.delivery, recojo: d.recojo, radioKm: +d.radioKm > 0 ? Math.min(Math.round(+d.radioKm), maxKmRubro(d.rubro)) : 0, tiempo: d.tiempo, pedidoMinimo: +d.pedidoMinimo || 0, extrasGratis: d.extras.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 20),
+        abre: d.abre, cierra: d.cierra, dias, delivery: d.delivery, recojo: d.recojo, radioKm: +d.radioKm > 0 ? Math.min(Math.round(+d.radioKm), maxKmRubro(d.rubro)) : 0, tiempo: d.tiempo, pedidoMinimo: +d.pedidoMinimo || 0, mesasActivo: d.rubro === "comida" && !!d.mesasActivo && +d.mesasN >= 1, mesasN: Math.min(100, Math.max(0, Math.round(+d.mesasN || 0))), mesaAbrir: !!d.mesaAbrir, extrasGratis: d.extras.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 20),
         pagoYape: d.pagoYape, pagoPlin: d.pagoPlin, contraEntrega: d.contraEntrega, yapeNum: d.yapeNum, yapeTitular: d.yapeTitular, plinNum: d.plinNum, plinTitular: d.plinTitular, pagoTransf: false,
         documento: { tipo: d.docTipo, numero: String(d.docNum).replace(/\D/g, ""), nombre: d.docNombre, ...(DOCV && DOCV.numero === String(d.docNum).replace(/\D/g, "") ? { verificado: true, estado: DOCV.estado || "", condicion: DOCV.condicion || "" } : {}) }, ...up, actualizado: new Date().toISOString() };
       if (!n) Object.assign(data, { owner: YO.uid, email: YO.email, estado: "pendiente", creado: new Date().toISOString(), aceptoComision: pctDe(null) });
       await DB.set("negocios", YO.uid, data); toast(n ? "Cambios guardados · ya se ven en la app" : "¡Listo! Enviamos tu negocio para revisión");
-      if (!n) location.reload(); else { NEG = { ...NEG, ...data }; marcaPanel(); b.disabled = false; b.innerHTML = `${ico("check")} Guardar cambios`; }
+      if (!n || !!n.mesasActivo !== !!data.mesasActivo) return setTimeout(() => location.reload(), 600); else { NEG = { ...NEG, ...data }; marcaPanel(); b.disabled = false; b.innerHTML = `${ico("check")} Guardar cambios`; }
     } catch (x) { console.error(x); b.disabled = false; b.textContent = n ? "Guardar cambios" : "Enviar para revisión"; err.textContent = "No se pudo guardar: " + (x.code || x.message); }
   };
 }

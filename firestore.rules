@@ -7,7 +7,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function logueado() { return request.auth != null; }
+    // Una cuenta de verdad (Google o correo). El inicio anónimo de los pedidos en mesa NO cuenta aquí.
+    function logueado() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function anonimo() { return request.auth != null; }   // cualquier celular identificado (incluye sin cuenta)
     function admin() { return logueado() && request.auth.token.email in ['admin@apamuy.com']; }
     function d() { return request.resource.data; }
     function cambia(campos) { return request.resource.data.diff(resource.data).affectedKeys().hasAny(campos); }
@@ -114,6 +116,35 @@ service cloud.firestore {
     }
 
     // ⭐ Calificación del cliente al negocio: una por pedido entregado (id = código del pedido). El servidor suma el promedio.
+    // ===== Pedidos en mesa (solo Comida, sin comisión) =====
+    match /mesas/{mid} {
+      function duenoM(x) { return logueado() && request.auth.uid == x.negocioId; }
+      allow read: if true;
+      allow create: if duenoM(request.resource.data) && mid == d().negocioId + '_' + string(d().num);
+      allow update: if duenoM(resource.data) && d().negocioId == resource.data.negocioId
+        // el cliente ya confirmado solo puede «llamar a la moza» o «pedir la cuenta»
+        || (anonimo() && request.auth.uid in resource.data.get('confirmados', []) && soloCambia(['llamada', 'llamadaEn']) && d().llamada in ['moza', 'cuenta']);
+      allow delete: if duenoM(resource.data);
+    }
+    match /pedidosMesa/{pid} {
+      function negm() { return get(/databases/$(database)/documents/negocios/$(d().negocioId)).data; }
+      function mesam() { return get(/databases/$(database)/documents/mesas/$(d().negocioId + '_' + string(d().mesa))).data; }
+      allow read: if anonimo() && (resource.data.uid == request.auth.uid || resource.data.negocioId == request.auth.uid);
+      allow create: if anonimo() && d().uid == request.auth.uid
+        && d().keys().hasOnly(['uid', 'negocioId', 'mesa', 'nombre', 'nota', 'estado', 'items', 'total', 'dist', 'sinUbic', 'creado'])
+        && d().nombre is string && d().nombre.size() >= 2 && d().nombre.size() <= 40 && d().nota is string && d().nota.size() <= 200
+        && d().items is list && d().items.size() >= 1 && d().items.size() <= 40 && d().total is number && d().total > 0 && d().total < 3000
+        && d().mesa is int && d().mesa >= 1
+        && negm().estado == 'activo' && negm().get('rubro', 'comida') == 'comida' && negm().get('mesasActivo', false) == true && d().mesa <= negm().mesasN
+        && !exists(/databases/$(database)/documents/bloqueosMesa/$(d().negocioId + '_' + request.auth.uid))
+        && (d().estado == 'por-confirmar' || (d().estado == 'nuevo' && request.auth.uid in mesam().get('confirmados', [])))
+        && (negm().get('mesaAbrir', false) != true || mesam().estado in ['abierta', 'ocupada']);
+      allow update: if logueado() && request.auth.uid == resource.data.negocioId && soloCambia(['estado', 'actualizado', 'pagado', 'cerradoEn']);
+    }
+    match /bloqueosMesa/{bid} {
+      allow read, delete: if logueado() && request.auth.uid == resource.data.negocioId;
+      allow create: if logueado() && request.auth.uid == d().negocioId && bid == d().negocioId + '_' + d().uid;
+    }
     // Escaneos del QR de cada negocio: cualquiera suma 1; solo el negocio y el admin los ven
     match /escaneosQR/{nid} {
       allow read: if logueado() && (request.auth.uid == nid || admin());

@@ -1,6 +1,6 @@
 /* QR por negocio: carteles A5 o stickers para imprimir. El cliente escanea y llega directo a la tienda del negocio.
    Usa lib/qrcode.js (qrcode-generator, licencia MIT). */
-const enlaceQR = n => `${String(AP.web || "https://apamuy.app").replace(/\/$/, "")}/negocio?n=${encodeURIComponent(n.id)}&qr=1`;
+const enlaceQR = n => `${String(AP.web || "https://apamuy.app").replace(/\/$/, "")}/negocio?n=${encodeURIComponent(n.id)}${n.mesa ? `&mesa=${n.mesa}` : ""}&qr=1`;
 function svgQR(texto) {
   const q = qrcode(0, "M"); q.addData(texto); q.make();
   const n = q.getModuleCount(); let d = "";
@@ -23,6 +23,10 @@ const LOGO_QR = () => new URL("img/logo-apamuy.png", location.href).href;
 function tarjetaQR(n, tam) {
   const ini = esc((n.nombre || "?")[0].toUpperCase()), logoN = n.logo ? `<img class="nl" src="${esc(imgUrl(n.logo))}" alt="" onerror="this.outerHTML='<span class=&quot;nl ini&quot;>${ini}</span>'">` : `<span class="nl ini">${esc((n.nombre || "?")[0].toUpperCase())}</span>`;
   const url = enlaceQR(n), corto = url.replace(/^https?:\/\//, "").replace("&qr=1", "");
+  if (n.mesa) return tam === "a5"
+    ? `<section class="a5 roja"><header><img src="${LOGO_QR()}" alt="Apamuy"></header><div class="cu">${logoN}<h1>${esc(n.nombre)}</h1><p class="mesa-g">MESA ${n.mesa}</p>
+        <div class="qr qr-m">${svgQR(url)}</div><h2>Escanea y pide desde tu mesa</h2><p class="mod">Elige tus platos, escribe tu nombre y te lo traemos</p></div><footer>Pagas al final en caja · Yape, Plin o efectivo</footer></section>`
+    : `<section class="st roja"><header><img src="${LOGO_QR()}" alt="Apamuy"></header><div class="qrb"><div class="qr">${svgQR(url)}</div><b class="mesa-s">MESA ${n.mesa}</b></div><span>Escanea y pide desde tu mesa</span></section>`;
   return tam === "a5"
     ? `<section class="a5 roja"><header><img src="${LOGO_QR()}" alt="Apamuy"></header><div class="cu">${logoN}<h1>${esc(n.nombre)}</h1><p class="sub">Pide desde tu celular</p>
         <div class="qr">${svgQR(url)}</div><h2>Escanea y pide aquí</h2><p class="mod">Delivery a tu puerta · Recojo en tienda</p><p class="url">${esc(corto)}</p></div><footer>Paga con Yape, Plin o efectivo</footer></section>`
@@ -37,7 +41,7 @@ function imprimirQR(lista, tam = "a5") {
   .a5 .cu{margin-top:12mm;width:100%;flex:1;background:#fff;color:#1A1430;border-radius:6mm;display:flex;flex-direction:column;align-items:center;padding:0 8mm 5mm;box-shadow:0 2mm 6mm rgba(0,0,0,.25)}
   .nl{width:20mm;height:20mm;border-radius:50%;object-fit:cover;border:1.2mm solid #fff;box-shadow:0 1mm 3mm rgba(0,0,0,.25);margin-top:-10mm;background:#1A1430;flex:none}.ini{display:grid;place-items:center;color:#fff;font-size:10mm;font-weight:800}
   .a5 h1{font-size:7.5mm;line-height:1.1;margin-top:2.5mm}.a5 .sub{color:#6b6478;font-size:3.8mm;margin-top:1mm}
-  .a5 .qr{width:84mm;height:84mm;margin:4mm 0 3mm}.qr svg{width:100%;height:100%;display:block}
+  .a5 .qr{width:84mm;height:84mm;margin:4mm 0 3mm}.a5 .qr-m{width:74mm;height:74mm;margin:2mm 0 3mm}.mesa-g{font-size:15mm;font-weight:900;color:#E63946;line-height:1;margin-top:2mm;letter-spacing:.5mm}.st b.mesa-s{font-size:6mm;color:#E63946;font-weight:900}.qr svg{width:100%;height:100%;display:block}
   .a5 h2{font-size:7mm;color:#E63946}.a5 .mod{font-size:3.8mm;margin-top:1mm}.a5 .url{font-size:2.8mm;color:#8a8496;margin-top:1.5mm;word-break:break-all}
   .a5 footer{margin-top:5mm;font-size:4.2mm;font-weight:800;letter-spacing:.2mm}
   .hoja.st-h{padding:12mm 10mm;gap:6mm}.st{width:85mm;height:85mm;border-radius:5mm;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:3.5mm 5mm 4mm;color:#fff;outline:.3mm dashed #bbb;outline-offset:1.5mm}
@@ -55,11 +59,15 @@ function imprimirQR(lista, tam = "a5") {
   toast("Preparando la impresión…"); listo().then(() => setTimeout(() => { fr.contentWindow.focus(); fr.contentWindow.print(); }, 200));
 }
 // Ventana para elegir el tamaño antes de imprimir
-function elegirTamQR(lista) {
-  modal(`Imprimir QR${lista.length > 1 ? ` · ${lista.length} negocios` : ` · ${esc(lista[0].nombre)}`}`, `<p class="muted">Elige el tamaño. Se abre la vista de impresión (puedes guardarlo como PDF).</p>
+function elegirTamQR(lista, titulo) {
+  modal(titulo || `Imprimir QR${lista.length > 1 ? ` · ${lista.length} negocios` : ` · ${esc(lista[0].nombre)}`}`, `<p class="muted">Elige el tamaño. Se abre la vista de impresión (puedes guardarlo como PDF).</p>
     <div class="qr-op"><button type="button" class="qr-t" data-tam="a5"><b>Cartel A5</b><small>Media hoja · para mostrador o pared · 1 por hoja</small></button>
     <button type="button" class="qr-t" data-tam="st"><b>Stickers 8,5 × 8,5 cm</b><small>Para mesas, puertas o bolsas · 6 por hoja A4</small></button></div>`, null, "Cerrar", { alAbrir: F => {
-      F.querySelectorAll("[data-tam]").forEach(b => b.onclick = () => { const t = b.dataset.tam; const l = t === "st" && lista.length === 1 ? Array(6).fill(lista[0]) : lista; imprimirQR(l, t); cerrarModal(); }); } });
+      F.querySelectorAll("[data-tam]").forEach(b => b.onclick = () => { const t = b.dataset.tam; const l = t === "st" && lista.length === 1 && !lista[0].mesa ? Array(6).fill(lista[0]) : lista; imprimirQR(l, t); cerrarModal(); }); } });
 }
 // Botón «Imprimir mi QR» del panel de cada negocio
 document.addEventListener("click", e => { if (e.target.closest("#qrMio") && typeof NEG !== "undefined" && NEG) elegirTamQR([NEG]); });
+
+// QR de mesas: uno por mesa (MESA 1, MESA 2…)
+function imprimirQRMesas(n) { const k = Math.min(100, +n.mesasN || 0); if (!k) return toast("Primero indica cuántas mesas tienes", true);
+  elegirTamQR(Array.from({ length: k }, (_, i) => ({ ...n, mesa: i + 1 })), `QR de mesas · ${k} mesas`); }
