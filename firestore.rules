@@ -114,6 +114,12 @@ service cloud.firestore {
     }
 
     // ⭐ Calificación del cliente al negocio: una por pedido entregado (id = código del pedido). El servidor suma el promedio.
+    // Escaneos del QR de cada negocio: cualquiera suma 1; solo el negocio y el admin los ven
+    match /escaneosQR/{nid} {
+      allow read: if logueado() && (request.auth.uid == nid || admin());
+      allow create: if d().keys().hasOnly(['n', 'ult']) && d().n == 1 && d().ult is string;
+      allow update: if d().keys().hasOnly(['n', 'ult']) && d().n == resource.data.n + 1 && d().ult is string;
+    }
     match /calificacionesNeg/{pid} {
       function ped() { return get(/databases/$(database)/documents/pedidos/$(pid)).data; }
       allow read: if logueado() && (resource.data.clienteUid == request.auth.uid || resource.data.negocioId == request.auth.uid || admin());

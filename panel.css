@@ -337,3 +337,11 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .bnp em { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; color: #fff; font-style: normal; font-weight: 700; font-size: .85rem; }
 .bnp [hidden] { display: none; } .bnp-a { display: grid; gap: 8px; align-content: start; max-width: 260px; }
 .bn-c.con-img img { border-radius: 12px; border: 0; width: 70px; height: 70px; }
+
+/* QR de negocios */
+.qr-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; } .qr-bar input[type=search] { flex: 1; min-width: 200px; height: 42px; border: 1.5px solid #E7E0EC; border-radius: 12px; padding: 0 14px; font: inherit; }
+.qr-l { display: grid; gap: 8px; } .qr-i { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #eee; border-radius: 14px; }
+.qr-i img, .qr-ini { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex: none; } .qr-ini { display: grid; place-items: center; background: #1A1430; color: #fff; font-weight: 800; }
+.qr-i > div { flex: 1; min-width: 0; display: grid; } .qr-i small { color: #6b6478; }
+.qr-op { display: grid; gap: 10px; margin-top: 10px; } .qr-t { text-align: left; display: grid; gap: 2px; padding: 14px; border: 1.5px solid #E7E0EC; border-radius: 14px; background: #fff; cursor: pointer; font: inherit; }
+.qr-t:hover { border-color: #E63946; } .qr-t b { font-size: 1rem; } .qr-t small { color: #6b6478; }

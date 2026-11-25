@@ -6,7 +6,7 @@
 const VIEWS = {}; let VISTA = "", YO = null, NEG = null, ADMIN = false;
 const NAV_NEG = [["inicio", "home", "Inicio"], ["pedidos", "bell", "Pedidos"], ["carta", "fire", "Carta y precios"], ["caja", "cash", "Caja"], ["comision", "percent", "Comisión Apamuy"], ["negocio", "store", "Mi negocio"]];
 const NAV_ADM = [["resumen", "home", "Resumen"], ["negocios", "store", "Negocios"], ["pedidosAdm", "bell", "Pedidos"], ["enviosAdm", "box", "Envíos"], ["comisiones", "percent", "Comisiones"], ["cobrosNeg", "cash", "Cobros negocios"], ["consultar", "search", "Consultar DNI / RUC"], ["repartidores", "bike", "Repartidores"], ["cobrosRep", "cash", "Cobros repartidores"],
-  ["clientes", "users", "Clientes"], ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["config", "gear", "Comisión y delivery"]];
+  ["clientes", "users", "Clientes"], ["web", "compass", "Página web"], ["rubros", "grid", "Rubros"], ["banners", "star", "Banners"], ["qrNeg", "grid", "QR de negocios"], ["config", "gear", "Comisión y delivery"]];
 const ESTADOS_N = { pendiente: ["En revisión", "warn"], activo: ["Activo", "ok"], suspendido: ["Suspendido", "bad"], rechazado: ["Rechazado", "bad"] };
 const estN = e => { const [t, c] = ESTADOS_N[e] || [e, "mute"]; return `<span class="st ${c}">${t}</span>`; };
 const estP = (e, p) => { const [t, c] = EST_P[e] || [e, "mute"]; return `<span class="st ${c}">${p && p.entrega === "recojo" && e === "listo" ? "Listo para recoger" : t}</span>`; };
@@ -261,7 +261,7 @@ VIEWS.inicio = async () => {
   const hoy = (await DB.list("pedidos", ["negocioId", "==", NEG.id], ["dia", "==", HOY()])).filter(p => !["anulado", "rechazado"].includes(p.estado));
   const [neg2, cals] = await Promise.all([DB.get("negocios", NEG.id).catch(() => NEG), DB.list("calificacionesNeg", ["negocioId", "==", NEG.id]).catch(() => [])]), est = estNeg(neg2 || NEG);
   const ent = hoy.filter(p => p.estado === "entregado"), ventas = ent.reduce((a, p) => a + (+(p.montoFinal ?? p.subtotal) || 0), 0);
-  $("#view").innerHTML = topBar(`Hola, ${esc(NEG.nombre)}`, "Así va tu negocio hoy.", NEG.estado === "activo" ? `<a class="btn btn-light btn-sm" href="${esc(AP.web)}/negocio?n=${encodeURIComponent(NEG.id)}" target="_blank" rel="noopener">${ico("arrow")} Ver mi tienda en la app</a>` : "") + `
+  $("#view").innerHTML = topBar(`Hola, ${esc(NEG.nombre)}`, "Así va tu negocio hoy.", NEG.estado === "activo" ? `<a class="btn btn-light btn-sm" href="${esc(AP.web)}/negocio?n=${encodeURIComponent(NEG.id)}" target="_blank" rel="noopener">${ico("arrow")} Ver mi tienda en la app</a> <button type="button" class="btn btn-pri btn-sm" id="qrMio">${ico("grid")} Imprimir mi QR</button>` : "") + `
     <div class="kpis neon"><div class="kpi"><span>Ventas de hoy</span><b>${S(ventas)}</b><small>${ent.length} pedido(s) entregado(s)</small></div><div class="kpi"><span>Pedidos de hoy</span><b>${hoy.length}</b><small>sin contar anulados</small></div>
       <div class="kpi"><span>Por atender</span><b>${PEDS.filter(p => ["por-validar", "nuevo"].includes(p.estado)).length}</b><small>nuevos o por validar</small></div><div class="kpi"><span>En curso</span><b>${PEDS.length}</b><small>preparando, listos o en camino</small></div>
       <div class="kpi"><span>Comisión de hoy</span><b>${S(ventas * pctDe(NEG) / 100)}</b><small>${pctDe(NEG)}% de la comida entregada</small></div>
@@ -862,6 +862,29 @@ VIEWS.banners = async () => {
       $("#bDel")?.addEventListener("click", async () => { if (!confirm("¿Eliminar este banner?")) return; await DB.del("banners", b.id); cerrarModal(); VIEWS.banners(); }); } }); };
   $("#nB").onclick = () => form();
   $("#view").onclick = e => { const x = e.target.closest("[data-eb]"); if (x) form(l.find(b => b.id === x.dataset.eb)); };
+};
+
+/* ================= ADMIN · QR DE NEGOCIOS (para imprimir y dejar en cada local) ================= */
+VIEWS.qrNeg = async () => {
+  const todos = (await DB.list("negocios")).filter(n => n.estado === "activo").sort((a, b) => String(a.nombre).localeCompare(b.nombre));
+  const qrs = await DB.list("escaneosQR").catch(() => []), cnt = Object.fromEntries(qrs.map(x => [x.id, x.n || 0]));
+  let SEL = new Set(), Q = "";
+  $("#view").innerHTML = topBar("QR de negocios", "Imprime el QR de cada negocio y déjalo en su local. El cliente lo escanea y llega directo a su tienda en Apamuy.", `<button class="btn btn-pri btn-sm" id="qrSel" disabled>${ico("grid")} Imprimir seleccionados</button>`) + `
+    <section class="card"><div class="qr-bar"><input type="search" id="qrQ" placeholder="Buscar negocio…"><label class="chk"><input type="checkbox" id="qrAll"><span>Seleccionar todos</span></label></div><div class="qr-l" id="qrL"></div></section>`;
+  const pintar = () => {
+    const l = todos.filter(n => !Q || String(n.nombre).toLowerCase().includes(Q) || String(n.distrito || "").toLowerCase().includes(Q));
+    $("#qrL").innerHTML = l.map(n => `<div class="qr-i"><label class="chk"><input type="checkbox" data-sel="${esc(n.id)}" ${SEL.has(n.id) ? "checked" : ""}><span></span></label>
+      ${n.logo ? `<img src="${esc(imgUrl(n.logo))}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'qr-ini',textContent:'${esc((n.nombre || "?")[0])}'}))">` : `<span class="qr-ini">${esc((n.nombre || "?")[0])}</span>`}
+      <div><b>${esc(n.nombre)}</b><small>${esc([rubroDe(n.rubro)?.nombre, n.distrito].filter(Boolean).join(" · "))} · ${cnt[n.id] || 0} escaneos</small></div>
+      <button class="btn btn-light btn-sm" data-qr="${esc(n.id)}">${ico("grid")} Imprimir QR</button></div>`).join("") || vacio("No hay negocios activos.");
+    $("#qrSel").disabled = !SEL.size; $("#qrSel").innerHTML = `${ico("grid")} Imprimir seleccionados${SEL.size ? ` (${SEL.size})` : ""}`;
+  };
+  pintar();
+  $("#qrQ").oninput = e => { Q = e.target.value.trim().toLowerCase(); pintar(); };
+  $("#qrAll").onchange = e => { SEL = e.target.checked ? new Set(todos.map(n => n.id)) : new Set(); pintar(); };
+  $("#qrSel").onclick = () => elegirTamQR(todos.filter(n => SEL.has(n.id)));
+  $("#view").onclick = e => { const b = e.target.closest("[data-qr]"); if (b) elegirTamQR([todos.find(n => n.id === b.dataset.qr)]); };
+  $("#view").onchange = e => { const c = e.target.closest("[data-sel]"); if (!c) return; c.checked ? SEL.add(c.dataset.sel) : SEL.delete(c.dataset.sel); pintar(); };
 };
 
 /* ================= ADMIN · REPARTIDORES ================= */
