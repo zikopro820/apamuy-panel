@@ -360,3 +360,24 @@ h1, h2 { font-family: "Manrope", system-ui, sans-serif; letter-spacing: -.02em; 
 .ms-b { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; } .ms-t { font-weight: 800; font-size: 1.1rem; }
 .ms-close { background: #1A1430; color: #fff; }
 .ms-cta > div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #eee; } .ms-cta small { display: block; color: #6b6478; } .ms-cta .t { font-weight: 800; font-size: 1.1rem; border: 0; }
+
+/* Mesas · pestañas e historial de ventas */
+.ms-tabs { display: flex; gap: 6px; margin: 0 0 14px; border-bottom: 2px solid #EEE8F2; }
+.ms-tabs button { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 10px 14px; font: 700 .95rem var(--f, inherit); color: #6b6478; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.ms-tabs button.on { color: #1A1430; border-bottom-color: #E63946; } .ms-tabs svg { width: 16px; height: 16px; }
+.msh-f { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.msh-f > button[data-r] { border: 1.5px solid #E7E0EC; background: #fff; border-radius: 999px; padding: 7px 14px; font-weight: 700; cursor: pointer; color: #6b6478; } .msh-f > button.on { background: #1A1430; border-color: #1A1430; color: #fff; }
+.msh-f input[type=date] { height: 36px; border: 1.5px solid #E7E0EC; border-radius: 10px; padding: 0 8px; } .msh-f #mshCsv { margin-left: auto; }
+.msh-k { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; } .msh-k div { background: #fff; border-radius: 14px; padding: 14px; border: 1px solid #EEE8F2; display: grid; gap: 4px; }
+.msh-k small { color: #6b6478; font-weight: 600; } .msh-k b { font-size: 1.4rem; } .msh-k div:first-child b { color: #E63946; }
+.msh-2 { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 12px; margin-bottom: 12px; } .msh-2 h3, .msh h3 { margin: 0 0 10px; font-size: 1rem; }
+.msh-r { position: relative; display: grid; grid-template-columns: 24px 1fr auto auto; gap: 8px; align-items: center; padding: 7px 0; font-size: .88rem; }
+.msh-r i { position: absolute; left: 32px; bottom: 1px; height: 3px; width: calc(var(--w) - 32px); background: #E63946; border-radius: 3px; opacity: .5; }
+.msh-i { width: 22px; height: 22px; border-radius: 50%; background: #F4F0F7; display: grid; place-items: center; font-weight: 800; font-size: .75rem; } .msh-r small { color: #6b6478; } .msh-r em { font-style: normal; font-weight: 800; }
+.msh-h { display: flex; align-items: flex-end; gap: 4px; height: 150px; padding-top: 6px; } .msh-h div { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.msh-h span { width: 100%; min-height: 2px; background: #E63946; border-radius: 4px 4px 0 0; } .msh-h small { font-size: .65rem; color: #6b6478; }
+.msh-pl { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; padding: 6px 0; font-size: .88rem; border-bottom: 1px solid #F4F0F7; } .msh-pl span { color: #E63946; font-weight: 800; } .msh-pl em { font-style: normal; color: #6b6478; }
+.msh-lh { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; } .msh-lh input { height: 38px; min-width: 240px; border: 1.5px solid #E7E0EC; border-radius: 10px; padding: 0 12px; }
+.msh-th, .msh-tr { display: grid; grid-template-columns: 80px 80px 200px 1fr 90px 110px; gap: 10px; align-items: center; padding: 9px 4px; font-size: .88rem; border-bottom: 1px solid #F4F0F7; }
+.msh-th { font-size: .75rem; font-weight: 800; color: #6b6478; text-transform: uppercase; } .msh-tr small { display: block; color: #6b6478; font-size: .75rem; } .msh-rech { margin-top: 10px; }
+@media (max-width: 900px) { .msh-k { grid-template-columns: 1fr 1fr; } .msh-2 { grid-template-columns: 1fr; } .msh-th { display: none; } .msh-tr { grid-template-columns: 1fr 1fr; } }
